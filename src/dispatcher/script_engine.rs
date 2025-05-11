@@ -112,7 +112,10 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
     let object = ObjectInitializer::new(context)
         .function(
             NativeFunction::from_copy_closure(move |_this, args, ctx| {
-                let data = read_u8_array_from_js_value(&args[0], ctx)?;
+                let data = read_u8_array_from_js_value(
+                    ensure_exists(args.get(0), "argument not found")?,
+                    ctx,
+                )?;
 
                 let mut response = get_response_from_context(ctx)?;
                 response.body.extend(data);
