@@ -1,10 +1,14 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, RwLock},
+};
 
 use axum::{Router, routing::get};
 use dispatcher::{Dispatcher, FileHandler, Route, ScriptHandler};
 
 mod controllers;
 mod dispatcher;
+mod parsed_request;
 
 fn init(mut dispatcher: Dispatcher) -> Dispatcher {
     dispatcher
@@ -29,7 +33,10 @@ fn init(mut dispatcher: Dispatcher) -> Dispatcher {
             },
             Route {
                 pattern: "^/js$".to_string(),
-                handler: Box::new(ScriptHandler::new("while (1) {}".to_string(), 3000)),
+                handler: Box::new(ScriptHandler::new(
+                    "response.send('aasdasd'); response.send(new Uint8Array([98, 55, 66]));".to_string(),
+                    3000,
+                )),
                 send_mail: false,
                 write_log: false,
             },
@@ -60,5 +67,10 @@ async fn main() {
         .with_state(Context::new());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

@@ -1,8 +1,19 @@
-use axum::{body::Body, extract::State, http::Request, response::Response};
+use std::net::SocketAddr;
 
-use crate::Context;
+use axum::{
+    body::Body,
+    extract::{ConnectInfo, State},
+    http::Request,
+    response::Response,
+};
 
-pub async fn index(State(ctx): State<Context>, request: Request<Body>) -> Response<Body> {
+use crate::{Context, parsed_request::ParsedRequest};
+
+pub async fn index(
+    State(ctx): State<Context>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    request: Request<Body>,
+) -> Response<Body> {
     if let Some(route) = {
         // https://rustcc.cn/article?id=ab4703a7-2130-4164-be40-f7a5cd325b09
         // 这里放到花括号里面是为了避免 guard 不穿越 .await
@@ -11,10 +22,13 @@ pub async fn index(State(ctx): State<Context>, request: Request<Body>) -> Respon
             .expect("lock poisoned")
             .dispatch(&request)
     } {
-        if let Ok(response) = route.handler.handle(request).await {
-            return response;
-        } else {
-            // TODO: 错误处理, 记录日志
+        let request = ParsedRequest::from(addr, request);
+        match route.handler.handle(request).await {
+            Ok(response) => return response,
+            Err(err) => {
+                // TODO: 错误处理, 记录日志
+                println!("{:?}", err);
+            }
         }
     }
 

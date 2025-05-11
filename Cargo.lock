@@ -1617,6 +1617,7 @@ dependencies = [
  "async-trait",
  "axum",
  "boa_engine",
+ "boa_gc",
  "once_cell",
  "regex",
  "serde",
