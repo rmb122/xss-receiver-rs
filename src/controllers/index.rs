@@ -9,6 +9,11 @@ use axum::{
 
 use crate::{Context, parsed_request::ParsedRequest};
 
+pub async fn handle_error(error: anyhow::Error) {
+    // TODO: 错误处理, 记录日志
+    println!("{:?}", error);
+}
+
 pub async fn index(
     State(ctx): State<Context>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -22,15 +27,16 @@ pub async fn index(
             .expect("lock poisoned")
             .dispatch(&request)
     } {
-        let request = ParsedRequest::from(addr, request);
-        match route.handler.handle(request).await {
-            Ok(response) => return response,
-            Err(err) => {
-                // TODO: 错误处理, 记录日志
-                println!("{:?}", err);
-            }
-        }
-    }
+        let error = match ParsedRequest::new(addr, request).await {
+            Ok(request) => match route.handler.handle(request).await {
+                Ok(response) => return response,
+                Err(error) => error,
+            },
+            Err(error) => error,
+        };
+
+        tokio::spawn(handle_error(error));
+    };
 
     Response::builder().status(404).body(Body::empty()).unwrap()
 }

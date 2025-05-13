@@ -34,7 +34,7 @@ fn init(mut dispatcher: Dispatcher) -> Dispatcher {
             Route {
                 pattern: "^/js$".to_string(),
                 handler: Box::new(ScriptHandler::new(
-                    "response.send('aasdasd', '2');response.send(new Uint8Array([98, 55, 66]));".to_string(),
+                    "response.send('aasdasd', '2');response.send(new Uint8Array([98, 55, 66]));response.sendStatus(201);response.sendHeader('a', 'x');response.sendHeader('a33Q', ['x', 'x2']);".to_string(),
                     3000,
                 )),
                 send_mail: false,

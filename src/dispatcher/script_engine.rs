@@ -2,7 +2,7 @@ use std::cell::RefMut;
 use std::ops::Deref;
 use std::{cell::RefCell, collections::HashMap};
 
-use boa_engine::object::builtins::{JsArrayBuffer, JsUint8Array};
+use boa_engine::object::builtins::{JsArray, JsArrayBuffer, JsUint8Array};
 use boa_engine::{
     Context, JsString, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
 };
@@ -109,24 +109,88 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
     let response = Gc::new(ResponseCell::new());
     context.insert_data(response.clone());
 
-    let object = ObjectInitializer::new(context)
-        .function(
-            NativeFunction::from_copy_closure(move |_this, args, ctx| {
-                let data = read_u8_array_from_js_value(
-                    ensure_exists(args.get(0), "argument not found")?,
-                    ctx,
+    let mut object_builder = ObjectInitializer::new(context);
+
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            let data = read_u8_array_from_js_value(
+                ensure_exists(args.get(0), "argument 0 not found")?,
+                ctx,
+            )?;
+
+            let mut response = get_response_from_context(ctx)?;
+            response.body.extend(data);
+
+            Ok(boa_engine::JsValue::Undefined)
+        }),
+        js_string!("send"),
+        1,
+    );
+
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            let status_code = ensure_exists(
+                ensure_exists(args.get(0), "argument 0 not found")?.as_number(),
+                "not a valid number",
+            )?;
+
+            let mut response = get_response_from_context(ctx)?;
+            response.status_code = status_code as u16;
+
+            Ok(boa_engine::JsValue::Undefined)
+        }),
+        js_string!("sendStatus"),
+        1,
+    );
+
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            let key = ensure_exists(
+                ensure_exists(args.get(0), "argument 0 not found")?.as_string(),
+                "not a valid string",
+            )?
+            .to_std_string_lossy();
+
+            let value = ensure_exists(args.get(1), "argument 1 not found")?;
+
+            if let Some(value) = value.as_string() {
+                get_response_from_context(ctx)?
+                    .headers
+                    .insert(key, vec![value.to_std_string_lossy()]);
+            } else {
+                let value_array = JsArray::from_object(
+                    ensure_exists(
+                        value.as_object(),
+                        "argument 1 not a valid string or string array",
+                    )?
+                    .to_owned(),
                 )?;
+                let value_array_length = value_array.length(ctx)?;
 
-                let mut response = get_response_from_context(ctx)?;
-                response.body.extend(data);
+                let mut value_vec = vec![];
 
-                Ok(boa_engine::JsValue::Undefined)
-            }),
-            js_string!("send"),
-            1,
-        )
-        .build();
+                for idx in 0..value_array_length {
+                    value_vec.push(
+                        ensure_exists(
+                            value_array.get(idx, ctx)?.as_string(),
+                            &format!("not a valid string in array index {}", idx),
+                        )?
+                        .to_std_string_lossy(),
+                    );
+                }
 
+                get_response_from_context(ctx)?
+                    .headers
+                    .insert(key, value_vec);
+            }
+
+            Ok(boa_engine::JsValue::Undefined)
+        }),
+        js_string!("sendHeader"),
+        2,
+    );
+
+    let object = object_builder.build();
     context
         .register_global_property(
             js_string!("response"),
