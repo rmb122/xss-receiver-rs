@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{borrow::Cow, collections::HashMap, net::SocketAddr};
 
 use axum::{body::Body, extract::Query, http::Request};
 use encoding_rs::Encoding;
@@ -12,7 +12,6 @@ use tokio_util::io::{ReaderStream, StreamReader};
 #[derive(Debug)]
 pub enum ParsedRequestBody {
     None,
-    Raw(Vec<u8>),
     Form(
         MultiMap<String, String>,
         MultiMap<String, (String, Vec<u8>)>,
@@ -28,6 +27,7 @@ pub struct ParsedRequest {
     pub headers: MultiMap<String, String>,
     pub params: MultiMap<String, String>,
 
+    pub body: Vec<u8>,
     pub parsed_body: ParsedRequestBody,
 }
 
@@ -36,7 +36,7 @@ impl ParsedRequest {
         let mut parsed_request = ParsedRequest {
             client_addr,
             method: request.method().to_string(),
-            path: request.uri().to_string(),
+            path: request.uri().path().to_string(),
             headers: request
                 .headers()
                 .iter()
@@ -46,13 +46,24 @@ impl ParsedRequest {
                     headers.insert(key, value);
                     headers
                 }),
-            params: if let Ok(query) =
-                Query::<MultiMap<String, String>>::try_from_uri(request.uri())
-            {
-                query.0
-            } else {
-                MultiMap::new()
+            params: {
+                println!(
+                    "{:?}",
+                    Query::<HashMap<String, Vec<String>>>::try_from_uri(request.uri())
+                );
+
+                if let Ok(query) =
+                    Query::<HashMap<String, Vec<String>>>::try_from_uri(request.uri())
+                {
+                    //query.0
+
+                    println!("{:?}", query);
+                    MultiMap::new()
+                } else {
+                    MultiMap::new()
+                }
             },
+            body: Vec::new(),
             parsed_body: ParsedRequestBody::None,
         };
 
@@ -66,8 +77,10 @@ impl ParsedRequest {
         .read_to_end(&mut body)
         .await?;
 
-        parsed_request.parse_body(body).await;
+        parsed_request.parse_body(&body).await;
+        parsed_request.body = body;
 
+        println!("{:?}", parsed_request);
         Ok(parsed_request)
     }
 
@@ -118,27 +131,26 @@ impl ParsedRequest {
         (parsed_content_type, attrs)
     }
 
-    fn try_decode<T: AsRef<str>>(content: &[u8], charset: Option<T>) -> String {
+    fn try_decode<T: AsRef<str>>(content: &[u8], charset: Option<T>) -> Cow<[u8]> {
         let charset = match charset {
-            None => return String::from_utf8_lossy(content).to_string(),
+            None => return Cow::Borrowed(content),
             Some(charset) => charset,
         };
 
         if let Some(encoding) =
             Encoding::for_label(charset.as_ref().to_ascii_lowercase().as_bytes())
         {
-            return encoding.decode_with_bom_removal(content).0.to_string();
+            return Cow::Owned(String::from(encoding.decode_with_bom_removal(content).0).into());
         } else {
-            return String::from_utf8_lossy(content).to_string();
+            return Cow::Borrowed(content);
         }
     }
 
-    async fn parse_body(&mut self, body: Vec<u8>) {
+    async fn parse_body(&mut self, body: &[u8]) {
         let content_type = match self.headers.get("Content-Type") {
             Some(content_type) => content_type,
             None => {
-                // 没有 content-type 直接作为 raw
-                self.parsed_body = ParsedRequestBody::Raw(body);
+                // 没有 content-type 不进行解析
                 return;
             }
         };
@@ -147,9 +159,9 @@ impl ParsedRequest {
 
         // try json
         if content_type.ends_with("/json") || content_type.ends_with("+json") {
-            let body = Self::try_decode(&body, attrs.get("charset"));
+            let body = Self::try_decode(body, attrs.get("charset"));
 
-            if let Ok(value) = serde_json::from_str::<Value>(&body) {
+            if let Ok(value) = serde_json::from_slice::<Value>(&body) {
                 self.parsed_body = ParsedRequestBody::Json(value);
                 return;
             }
@@ -157,10 +169,10 @@ impl ParsedRequest {
 
         // try x-www-form-urlencoded
         if content_type.ends_with("/x-www-form-urlencoded") {
-            let body = Self::try_decode(&body, attrs.get("charset"));
+            let body = Self::try_decode(body, attrs.get("charset"));
 
             let mut form = MultiMap::<String, String>::new();
-            for (key, value) in form_urlencoded::parse(body.as_bytes()) {
+            for (key, value) in form_urlencoded::parse(&body) {
                 form.insert(key.to_string(), value.to_string());
             }
             self.parsed_body = ParsedRequestBody::Form(form, MultiMap::new());
@@ -171,8 +183,7 @@ impl ParsedRequest {
         if let (true, Some(boundary)) =
             (content_type == "multipart/form-data", attrs.get("boundary"))
         {
-            println!("{:?}", boundary);
-            let mut multipart = Multipart::new(ReaderStream::new(body.as_slice()), boundary);
+            let mut multipart = Multipart::new(ReaderStream::new(body), boundary);
             let mut form = MultiMap::<String, String>::new();
             let mut file = MultiMap::<String, (String, Vec<u8>)>::new();
 
@@ -201,7 +212,10 @@ impl ParsedRequest {
                 match filename {
                     None => {
                         let value = Self::try_decode(&content, charset);
-                        form.insert(name.to_string(), value);
+                        form.insert(
+                            name.to_string(),
+                            String::from(String::from_utf8_lossy(&value)),
+                        );
                     }
                     Some(filename) => {
                         file.insert(name.to_string(), (filename, content));
@@ -212,8 +226,5 @@ impl ParsedRequest {
             self.parsed_body = ParsedRequestBody::Form(form, file);
             return;
         }
-
-        // fallback to Raw
-        self.parsed_body = ParsedRequestBody::Raw(body);
     }
 }
