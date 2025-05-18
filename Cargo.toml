@@ -27,3 +27,4 @@ boa_gc = "0.20.0"
 
 [patch.crates-io]
 http = { path = "thridparty/http/" }
+httparse = { path = "thridparty/httparse/" }

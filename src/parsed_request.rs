@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, net::SocketAddr};
 
-use axum::{body::Body, extract::Query, http::Request};
+use axum::{body::Body, http::Request};
 use encoding_rs::Encoding;
 use futures::TryStreamExt;
 use multer::Multipart;
@@ -47,21 +47,14 @@ impl ParsedRequest {
                     headers
                 }),
             params: {
-                println!(
-                    "{:?}",
-                    Query::<HashMap<String, Vec<String>>>::try_from_uri(request.uri())
-                );
-
-                if let Ok(query) =
-                    Query::<HashMap<String, Vec<String>>>::try_from_uri(request.uri())
-                {
-                    //query.0
-
-                    println!("{:?}", query);
-                    MultiMap::new()
-                } else {
-                    MultiMap::new()
+                let mut params = MultiMap::<String, String>::new();
+                let query = request.uri().query();
+                if let Some(query) = query {
+                    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+                        params.insert(key.to_string(), value.to_string());
+                    }
                 }
+                params
             },
             body: Vec::new(),
             parsed_body: ParsedRequestBody::None,
