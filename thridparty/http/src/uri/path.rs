@@ -4,7 +4,7 @@ use std::{cmp, fmt, hash, str};
 
 use bytes::Bytes;
 
-use super::{ErrorKind, InvalidUri};
+use super::InvalidUri;
 use crate::byte_str::ByteStr;
 
 /// Represents the path component of a URI
@@ -42,37 +42,13 @@ impl PathAndQuery {
                         break;
                     }
 
-                    // This is the range of bytes that don't need to be
-                    // percent-encoded in the path. If it should have been
-                    // percent-encoded, then error.
-                    #[rustfmt::skip]
-                    0x21 |
-                    0x24..=0x3B |
-                    0x3D |
-                    0x40..=0x5F |
-                    0x61..=0x7A |
-                    0x7C |
-                    0x7E => {}
-
                     // potentially utf8, might not, should check
                     0x7F..=0xFF => {
                         is_maybe_not_utf8 = true;
                     }
 
-                    // These are code points that are supposed to be
-                    // percent-encoded in the path but there are clients
-                    // out there sending them as is and httparse accepts
-                    // to parse those requests, so they are allowed here
-                    // for parity.
-                    //
-                    // For reference, those are code points that are used
-                    // to send requests with JSON directly embedded in
-                    // the URI path. Yes, those things happen for real.
-                    #[rustfmt::skip]
-                    b'"' |
-                    b'{' | b'}' => {}
-
-                    _ => return Err(ErrorKind::InvalidUriChar.into()),
+                    // let' allow all other chars
+                    _ => {}
                 }
             }
 
@@ -80,17 +56,6 @@ impl PathAndQuery {
             if query != NONE {
                 for (i, &b) in iter {
                     match b {
-                        // While queries *should* be percent-encoded, most
-                        // bytes are actually allowed...
-                        // See https://url.spec.whatwg.org/#query-state
-                        //
-                        // Allowed: 0x21 / 0x24 - 0x3B / 0x3D / 0x3F - 0x7E
-                        #[rustfmt::skip]
-                        0x21 |
-                        0x24..=0x3B |
-                        0x3D |
-                        0x3F..=0x7E => {}
-
                         0x7F..=0xFF => {
                             is_maybe_not_utf8 = true;
                         }
@@ -100,10 +65,8 @@ impl PathAndQuery {
                             break;
                         }
 
-                        _ => {
-                            println!("test: {:?}", b);
-                            return Err(ErrorKind::InvalidUriChar.into());
-                        },
+                        // let' allow all other chars
+                        _ => {}
                     }
                 }
             }
@@ -114,7 +77,7 @@ impl PathAndQuery {
         }
 
         let data = if is_maybe_not_utf8 {
-            ByteStr::from_utf8(src).map_err(|_| ErrorKind::InvalidUriChar)?
+            ByteStr::from_utf8_lossy(src)
         } else {
             unsafe { ByteStr::from_utf8_unchecked(src) }
         };

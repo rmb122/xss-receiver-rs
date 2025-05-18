@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use std::{ops, str};
+use std::{borrow::Cow, ops, str};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(crate) struct ByteStr {
@@ -46,10 +46,20 @@ impl ByteStr {
         ByteStr { bytes }
     }
 
+    #[allow(unused)]
     pub(crate) fn from_utf8(bytes: Bytes) -> Result<ByteStr, std::str::Utf8Error> {
         str::from_utf8(&bytes)?;
         // Invariant: just checked is utf8
         Ok(ByteStr { bytes })
+    }
+
+    pub(crate) fn from_utf8_lossy(bytes: Bytes) -> ByteStr {
+        match String::from_utf8_lossy(&bytes) {
+            Cow::Borrowed(_) => ByteStr { bytes },
+            Cow::Owned(str) => ByteStr {
+                bytes: Bytes::from(str),
+            },
+        }
     }
 }
 
