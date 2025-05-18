@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(
-    missing_docs,
     clippy::missing_safety_doc,
     clippy::undocumented_unsafe_blocks
 )]
@@ -208,13 +207,13 @@ impl<T> Status<T> {
 /// Parser configuration.
 #[derive(Clone, Debug, Default)]
 pub struct ParserConfig {
-    allow_spaces_after_header_name_in_responses: bool,
-    allow_obsolete_multiline_headers_in_responses: bool,
-    allow_multiple_spaces_in_request_line_delimiters: bool,
-    allow_multiple_spaces_in_response_status_delimiters: bool,
-    allow_space_before_first_header_name: bool,
-    ignore_invalid_headers_in_responses: bool,
-    ignore_invalid_headers_in_requests: bool,
+    pub allow_spaces_after_header_name_in_responses: bool,
+    pub allow_obsolete_multiline_headers_in_responses: bool,
+    pub allow_multiple_spaces_in_request_line_delimiters: bool,
+    pub allow_multiple_spaces_in_response_status_delimiters: bool,
+    pub allow_space_before_first_header_name: bool,
+    pub ignore_invalid_headers_in_responses: bool,
+    pub ignore_invalid_headers_in_requests: bool,
 }
 
 impl ParserConfig {
@@ -478,7 +477,8 @@ impl<'h, 'b> Request<'h, 'b> {
         }
     }
 
-    fn parse_with_config_and_uninit_headers(
+    /// 神人库, byd 函数都不 export 的
+    pub fn parse_with_config_and_uninit_headers(
         &mut self,
         buf: &'b [u8],
         config: &ParserConfig,
