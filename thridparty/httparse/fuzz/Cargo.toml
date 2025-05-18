@@ -1,0 +1,56 @@
+
+[package]
+name = "httparse-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4.0"
+
+[dependencies.httparse]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "parse_request"
+path = "fuzz_targets/parse_request.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_chunk_size"
+path = "fuzz_targets/parse_chunk_size.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_headers"
+path = "fuzz_targets/parse_headers.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_response"
+path = "fuzz_targets/parse_response.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_response_multspaces"
+path = "fuzz_targets/parse_response_multspaces.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_request_multspaces"
+path = "fuzz_targets/parse_request_multspaces.rs"
+test = false
+doc = false
