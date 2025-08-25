@@ -1,0 +1,10 @@
+db_url = "postgres://postgres:admin@127.0.0.1/postgres"
+
+[http_server]
+listen = "0.0.0.0:8000"
+upload_storage_path = ""
+real_addr_header = ""
+admin_prefix = "/super_admin"
+
+[dns_server]
+listen = ""

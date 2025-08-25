@@ -105,6 +105,13 @@ fn register_request_to_context(context: &mut Context, request: &ParsedRequest) {
         .expect("property shouldn't exist");
 }
 
+fn check_argument_count(args: &[JsValue], count: usize) -> JsResult<()> {
+    for i in 0..count {
+        ensure_exists(args.get(i), &format!("argument {} not found", i))?;
+    }
+    Ok(())
+}
+
 fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
     let response = Gc::new(ResponseCell::new());
     context.insert_data(response.clone());
@@ -113,11 +120,9 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
 
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            let data = read_u8_array_from_js_value(
-                ensure_exists(args.get(0), "argument 0 not found")?,
-                ctx,
-            )?;
+            check_argument_count(args, 1)?;
 
+            let data = read_u8_array_from_js_value(&args[0], ctx)?;
             let mut response = get_response_from_context(ctx)?;
             response.body.extend(data);
 
@@ -129,11 +134,9 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
 
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            let status_code = ensure_exists(
-                ensure_exists(args.get(0), "argument 0 not found")?.as_number(),
-                "not a valid number",
-            )?;
+            check_argument_count(args, 1)?;
 
+            let status_code = ensure_exists(args[0].as_number(), "not a valid number")?;
             let mut response = get_response_from_context(ctx)?;
             response.status_code = status_code as u16;
 
@@ -145,13 +148,11 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
 
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            let key = ensure_exists(
-                ensure_exists(args.get(0), "argument 0 not found")?.as_string(),
-                "not a valid string",
-            )?
-            .to_std_string_lossy();
+            check_argument_count(args, 2)?;
 
-            let value = ensure_exists(args.get(1), "argument 1 not found")?;
+            let key =
+                ensure_exists(args[0].as_string(), "not a valid string")?.to_std_string_lossy();
+            let value = &args[1];
 
             if let Some(value) = value.as_string() {
                 get_response_from_context(ctx)?
