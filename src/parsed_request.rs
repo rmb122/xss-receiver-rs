@@ -60,18 +60,16 @@ impl ParsedRequest {
             parsed_body: ParsedRequestBody::None,
         };
 
-        let mut body = Vec::new();
         StreamReader::new(
             TryStreamExt::map_err(request.into_body().into_data_stream(), |err| {
                 std::io::Error::other(err)
             })
             .into_stream(),
         )
-        .read_to_end(&mut body)
+        .read_to_end(&mut parsed_request.body)
         .await?;
 
-        parsed_request.parse_body(&body).await;
-        parsed_request.body = body;
+        parsed_request.parse_body().await;
 
         println!("{:?}", parsed_request);
         Ok(parsed_request)
@@ -139,7 +137,7 @@ impl ParsedRequest {
         }
     }
 
-    async fn parse_body(&mut self, body: &[u8]) {
+    async fn parse_body(&mut self) {
         let content_type = match self.headers.get("Content-Type") {
             Some(content_type) => content_type,
             None => {
@@ -152,7 +150,7 @@ impl ParsedRequest {
 
         // try json
         if content_type.ends_with("/json") || content_type.ends_with("+json") {
-            let body = Self::try_decode(body, attrs.get("charset"));
+            let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
 
             if let Ok(value) = serde_json::from_slice::<Value>(&body) {
                 self.parsed_body = ParsedRequestBody::Json(value);
@@ -162,7 +160,7 @@ impl ParsedRequest {
 
         // try x-www-form-urlencoded
         if content_type.ends_with("/x-www-form-urlencoded") {
-            let body = Self::try_decode(body, attrs.get("charset"));
+            let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
 
             let mut form = MultiMap::<String, String>::new();
             for (key, value) in form_urlencoded::parse(&body) {
@@ -176,7 +174,7 @@ impl ParsedRequest {
         if let (true, Some(boundary)) =
             (content_type == "multipart/form-data", attrs.get("boundary"))
         {
-            let mut multipart = Multipart::new(ReaderStream::new(body), boundary);
+            let mut multipart = Multipart::new(ReaderStream::new(self.body.as_slice()), boundary);
             let mut form = MultiMap::<String, String>::new();
             let mut file = MultiMap::<String, (String, Vec<u8>)>::new();
 

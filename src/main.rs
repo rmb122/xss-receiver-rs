@@ -3,10 +3,14 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::db::model::{ADMIN_ID, NewUser, User};
 use axum::{Router, routing::get};
-use diesel::ConnectionResult;
+use db::schema::users;
+use diesel::dsl::{exists, select};
+use diesel::prelude::*;
+use diesel_async::RunQueryDsl;
 use diesel_async::{
-    AsyncConnection, AsyncPgConnection, RunQueryDsl,
+    AsyncPgConnection,
     pooled_connection::{AsyncDieselConnectionManager, bb8},
 };
 use dispatcher::{Dispatcher, FileHandler, Route, ScriptHandler};
@@ -77,6 +81,27 @@ async fn establish_db_connection(db_url: &str) -> anyhow::Result<bb8::Pool<Async
     Ok(bb8::Pool::builder().build(config).await?)
 }
 
+async fn create_init_admin_user(pool: &bb8::Pool<AsyncPgConnection>) -> anyhow::Result<()> {
+    let mut conn = pool.get().await?;
+
+    let count: i64 = users::table
+        .filter(users::id.eq(ADMIN_ID))
+        .count()
+        .get_result(&mut conn)
+        .await?;
+    if count == 0 {
+        let _: i32 = diesel::insert_into(users::table)
+            .values(&NewUser {
+                username: String::from("admin"),
+                password: String::from("admin"),
+            })
+            .returning(users::id)
+            .get_result(&mut conn)
+            .await?;
+    }
+    return Ok(());
+}
+
 #[tokio::main]
 async fn main() {
     let args = std::env::args().collect::<Vec<String>>();
@@ -110,7 +135,9 @@ async fn main() {
         }
     };
 
-    db_pool.get().await.unwrap();
+    create_init_admin_user(&db_pool)
+        .await
+        .expect("create init admin user failed");
 
     let admin_router = Router::new();
 
