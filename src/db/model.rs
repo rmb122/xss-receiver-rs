@@ -2,7 +2,7 @@ use diesel::prelude::*;
 
 pub const ADMIN_ID: i32 = 1;
 
-#[derive(Queryable, Selectable)]
+#[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::db::schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
