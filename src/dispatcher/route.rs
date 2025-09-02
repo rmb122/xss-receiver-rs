@@ -27,8 +27,10 @@ pub struct FileHandler {
 }
 
 impl FileHandler {
-    pub fn new(filename: String) -> Self {
-        return Self { filename };
+    pub fn new<T: Into<String>>(filename: T) -> Self {
+        return Self {
+            filename: filename.into(),
+        };
     }
 }
 
@@ -50,8 +52,11 @@ pub struct ScriptHandler {
 }
 
 impl ScriptHandler {
-    pub fn new(script: String, timeout: i32) -> Self {
-        return Self { script, timeout };
+    pub fn new<T: Into<String>>(script: T, timeout: i32) -> Self {
+        return Self {
+            script: script.into(),
+            timeout,
+        };
     }
 }
 
