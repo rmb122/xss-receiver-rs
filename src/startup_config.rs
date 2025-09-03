@@ -10,6 +10,8 @@ pub struct StartupConfig {
 #[derive(Clone, Deserialize)]
 pub struct HttpServer {
     pub listen: String,
+    pub jwt_secret: String,
+    pub jwt_expire_time: i64,
     pub upload_storage_path: String,
     pub real_addr_header: String,
     pub admin_prefix: String,

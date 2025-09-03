@@ -84,7 +84,7 @@ async fn main() {
 
     axum::serve(
         listener,
-        controllers::get_router(Context::new(&config, db_pool))
+        controllers::get_app_router(Context::new(&config, db_pool))
             .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await

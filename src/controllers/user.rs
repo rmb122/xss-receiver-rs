@@ -1,13 +1,20 @@
 use axum::{Json, extract::State};
 use diesel::prelude::*;
 use diesel_async::RunQueryDsl;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     Context,
-    controllers::{AppError, Response},
+    controllers::AppError,
     db::{model::User, schema::users},
+    utils::{jwt::Claims, response::Response},
 };
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginedUser {
+    pub id: i32,
+    pub username: String,
+}
 
 #[derive(Deserialize)]
 pub struct LoginRequeqst {
@@ -18,7 +25,7 @@ pub struct LoginRequeqst {
 pub async fn login(
     State(ctx): State<Context>,
     Json(request): Json<LoginRequeqst>,
-) -> Result<Response<()>, AppError> {
+) -> Result<Response<String>, AppError> {
     let mut conn = ctx.db_conn().await?;
 
     let user: Option<User> = users::table
@@ -30,8 +37,17 @@ pub async fn login(
 
     if let Some(user) = user {
         if password_auth::verify_password(&request.password, &user.password).is_ok() {
-            return Ok(Response::ok().msg("login success"));
+            return Ok(Response::<String>::ok().msg("login success").payload(
+                ctx.jwt_manager.encode_token(LoginedUser {
+                    id: user.id,
+                    username: user.username,
+                })?,
+            ));
         }
     }
     return Err(anyhow::anyhow!("username or password error").into());
+}
+
+pub async fn info(Claims(user): Claims<LoginedUser>) -> Response<LoginedUser> {
+    Response::ok().payload(user)
 }
