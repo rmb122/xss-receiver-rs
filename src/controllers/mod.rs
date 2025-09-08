@@ -1,14 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use axum::{
-    Router,
-    extract::FromRef,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
-};
+use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 use jsonwebtoken::Algorithm;
+use utoipa_axum::{router::OpenApiRouter, routes};
+use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
     dispatcher::{Dispatcher, FileHandler, Route, ScriptHandler},
@@ -96,13 +92,24 @@ impl FromRef<Context> for Arc<JwtManager> {
     }
 }
 
+const OPEN_API_URL: &str = "/api-docs/openapi.json";
+
 pub fn get_app_router(context: Context) -> Router<()> {
-    let user_router = Router::new()
-        .route("/login", post(user::login))
-        .route("/info", get(user::info));
-    let admin_router = Router::new().nest("/user", user_router);
+    let user_router = OpenApiRouter::new().routes(routes!(user::login, user::info));
+    let (mut admin_router, api) = OpenApiRouter::new()
+        .nest("/user", user_router)
+        .split_for_parts();
 
     let prefix = &context.startup_config.http_server.admin_prefix;
+    let prefix = prefix.strip_suffix("/").unwrap_or(prefix);
+
+    // add open api
+    admin_router = admin_router.merge(
+        SwaggerUi::new("/swagger-ui")
+            .url(OPEN_API_URL, api)
+            .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
+    );
+
     let router = if prefix.is_empty() || prefix == "/" {
         Router::new().merge(admin_router)
     } else {

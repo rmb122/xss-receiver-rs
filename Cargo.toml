@@ -35,6 +35,10 @@ boa_gc = "0.20.0"
 diesel = "2.2.10"
 diesel-async = { version = "0.5.2", features = ["postgres", "bb8"] }
 
+utoipa = { version = "5.4.0", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum", "vendored"] }
+utoipa-axum = "0.2.0"
+
 [patch.crates-io]
 http = { path = "thirdparty/http/" }
 httparse = { path = "thirdparty/httparse/" }

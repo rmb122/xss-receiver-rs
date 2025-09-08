@@ -10,18 +10,19 @@ use crate::{
     utils::{jwt::Claims, response::Response},
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct LoginedUser {
     pub id: i32,
     pub username: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct LoginRequeqst {
     username: String,
     password: String,
 }
 
+#[utoipa::path(post, path = "/login", responses((status = OK, body = Response<String>)))]
 pub async fn login(
     State(ctx): State<Context>,
     Json(request): Json<LoginRequeqst>,
@@ -48,6 +49,7 @@ pub async fn login(
     return Err(anyhow::anyhow!("username or password error").into());
 }
 
+#[utoipa::path(get, path = "/info", responses((status = OK, body = Response<LoginedUser>)))]
 pub async fn info(Claims(user): Claims<LoginedUser>) -> Response<LoginedUser> {
     Response::ok().payload(user)
 }
