@@ -9,13 +9,14 @@ use serde_json::Value;
 use tokio::io::AsyncReadExt;
 use tokio_util::io::{ReaderStream, StreamReader};
 
+pub type KeyValues = MultiMap<String, String>;
+pub type UploadFile = MultiMap<String, (String, Vec<u8>)>;
+pub type PersistedUploadFile = MultiMap<String, (String, String)>;
+
 #[derive(Debug)]
 pub enum ParsedRequestBody {
     None,
-    Form(
-        MultiMap<String, String>,
-        MultiMap<String, (String, Vec<u8>)>,
-    ), // (普通的 post form, file)
+    Form(KeyValues, UploadFile), // (普通的 post form, file)
     Json(Value),
 }
 
@@ -24,8 +25,8 @@ pub struct ParsedRequest {
     pub client_addr: SocketAddr,
     pub method: String,
     pub path: String,
-    pub headers: MultiMap<String, String>,
-    pub params: MultiMap<String, String>,
+    pub headers: KeyValues,
+    pub params: KeyValues,
 
     pub body: Vec<u8>,
     pub parsed_body: ParsedRequestBody,
@@ -40,14 +41,14 @@ impl ParsedRequest {
             headers: request
                 .headers()
                 .iter()
-                .fold(MultiMap::new(), |mut headers, kv| {
+                .fold(KeyValues::new(), |mut headers, kv| {
                     let key = Self::unify_header_key(kv.0.to_string());
                     let value = String::from_utf8_lossy(kv.1.as_bytes()).to_string();
                     headers.insert(key, value);
                     headers
                 }),
             params: {
-                let mut params = MultiMap::<String, String>::new();
+                let mut params = KeyValues::new();
                 let query = request.uri().query();
                 if let Some(query) = query {
                     for (key, value) in form_urlencoded::parse(query.as_bytes()) {
@@ -162,11 +163,11 @@ impl ParsedRequest {
         if content_type.ends_with("/x-www-form-urlencoded") {
             let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
 
-            let mut form = MultiMap::<String, String>::new();
+            let mut form = KeyValues::new();
             for (key, value) in form_urlencoded::parse(&body) {
                 form.insert(key.to_string(), value.to_string());
             }
-            self.parsed_body = ParsedRequestBody::Form(form, MultiMap::new());
+            self.parsed_body = ParsedRequestBody::Form(form, UploadFile::new());
             return;
         }
 
@@ -175,8 +176,8 @@ impl ParsedRequest {
             (content_type == "multipart/form-data", attrs.get("boundary"))
         {
             let mut multipart = Multipart::new(ReaderStream::new(self.body.as_slice()), boundary);
-            let mut form = MultiMap::<String, String>::new();
-            let mut file = MultiMap::<String, (String, Vec<u8>)>::new();
+            let mut form = KeyValues::new();
+            let mut file = UploadFile::new();
 
             while let Ok(Some(mut field)) = multipart.next_field().await {
                 let name = if let Some(name) = field.name() {
@@ -196,6 +197,7 @@ impl ParsedRequest {
                 };
                 let mut content = Vec::new();
 
+                // TODO: 增加上传大小限制
                 while let Ok(Some(chunk)) = field.chunk().await {
                     content.extend(chunk);
                 }

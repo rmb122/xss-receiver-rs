@@ -1,18 +1,101 @@
-use std::net::SocketAddr;
-
 use axum::{
     body::Body,
     extract::{ConnectInfo, State},
     http::Request,
     response::Response,
 };
+use base64::prelude::*;
+use diesel_async::{AsyncPgConnection, RunQueryDsl, pooled_connection::bb8};
+use std::net::SocketAddr;
 
-use crate::controllers::Context;
-use crate::parsed_request::ParsedRequest;
+use crate::{
+    controllers::Context,
+    db::{
+        helper::insert_system_log,
+        model::{BodyType, NewHttpLog},
+        schema::http_log,
+    },
+    parsed_request::ParsedRequestBody,
+    utils::{diesel_json, upload},
+};
+use crate::{
+    dispatcher::Route,
+    parsed_request::{ParsedRequest, PersistedUploadFile},
+};
 
-pub async fn handle_error(error: anyhow::Error) {
-    // TODO: 错误处理, 记录日志
-    println!("{:?}", error);
+pub async fn handle_system_error(
+    pool: bb8::Pool<AsyncPgConnection>,
+    url: String,
+    client_addr: SocketAddr,
+    error: anyhow::Error,
+) {
+    // 处理系统错误, 代表 ParsedRequest::new 处理失败, 或者插入数据库失败的情况
+    let msg = format!(
+        "when processing request from {:?} with url {:?}, get error {:?}",
+        client_addr, url, error
+    );
+
+    if let Ok(mut conn) = pool.get().await {
+        let err = insert_system_log(&mut conn, &msg).await;
+        if let Err(err) = err {
+            log::error!("when insert system log msg {:?}, error: {:?}", msg, err);
+        }
+    } else {
+        log::error!(
+            "can't acquire connection from pool when insert system log msg {:?}",
+            msg
+        );
+    }
+}
+
+pub fn get_http_log_from_request(
+    request: &ParsedRequest,
+    upload_dir: &str,
+) -> anyhow::Result<NewHttpLog> {
+    let (body_type, body, file) = match &request.parsed_body {
+        ParsedRequestBody::None => (
+            BodyType::RAW,
+            BASE64_STANDARD.encode(&request.body),
+            PersistedUploadFile::new(),
+        ),
+        ParsedRequestBody::Form(form, file) => {
+            let mut persised_upload_file = PersistedUploadFile::new();
+            for i in file.iter() {
+                persised_upload_file.insert(
+                    i.0.clone(),
+                    (
+                        i.1.0.clone(),
+                        upload::persist_upload_file(&i.1.1, upload_dir)?,
+                    ),
+                );
+            }
+
+            (
+                BodyType::FORM,
+                serde_json::to_string(form)?,
+                persised_upload_file,
+            )
+        }
+        ParsedRequestBody::Json(value) => (
+            BodyType::JSON,
+            serde_json::to_string(value)?,
+            PersistedUploadFile::new(),
+        ),
+    };
+
+    Ok(NewHttpLog {
+        client_ip: request.client_addr.ip().to_string(),
+        client_port: request.client_addr.port() as i32,
+        method: request.method.clone(),
+        path: request.path.clone(),
+        arg: diesel_json::Json(request.params.clone()),
+        header: diesel_json::Json(request.headers.clone()),
+        body_type: body_type,
+        body: body,
+        file: diesel_json::Json(file),
+        extra_info: serde_json::Value::Null,
+        error_log: None,
+    })
 }
 
 fn get_real_addr_from_request(
@@ -29,15 +112,67 @@ fn get_real_addr_from_request(
     }
 }
 
+pub fn get_default_response() -> Response<Body> {
+    Response::builder().status(404).body(Body::empty()).unwrap()
+}
+
+pub async fn process_route(
+    ctx: &Context,
+    client_addr: &SocketAddr,
+    request: Request<Body>,
+    route: &Route,
+) -> anyhow::Result<Response<Body>> {
+    let request = ParsedRequest::new(client_addr.clone(), request).await?;
+
+    let mut new_http_log = None;
+    if route.write_log {
+        new_http_log = Some(get_http_log_from_request(
+            &request,
+            &ctx.startup_config.http_server.upload_storage_path,
+        )?);
+    }
+
+    let result = route.handler.handle(request).await;
+
+    let response = if let Some(mut new_http_log) = new_http_log {
+        let response = match result {
+            Ok((extra_info, response)) => {
+                new_http_log.extra_info = extra_info;
+                response
+            }
+            Err(error) => {
+                new_http_log.error_log = Some(error.to_string());
+                get_default_response()
+            }
+        };
+
+        let mut conn = ctx.db_conn().await?;
+        let _: i32 = diesel::insert_into(http_log::table)
+            .values(new_http_log)
+            .returning(http_log::id)
+            .get_result(&mut conn)
+            .await?;
+
+        response
+    } else {
+        match result {
+            Ok((_, response)) => response,
+            Err(_) => get_default_response(),
+        }
+    };
+
+    Ok(response)
+}
+
 pub async fn index(
     State(ctx): State<Context>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request<Body>,
 ) -> Response<Body> {
-    let real_addr: SocketAddr = if let Ok(real_addr) =
+    let client_addr: SocketAddr = if let Ok(client_addr) =
         get_real_addr_from_request(&ctx.startup_config.http_server.real_addr_header, &request)
     {
-        real_addr
+        client_addr
     } else {
         addr
     };
@@ -50,16 +185,20 @@ pub async fn index(
             .expect("lock poisoned")
             .dispatch(&request)
     } {
-        let error = match ParsedRequest::new(real_addr, request).await {
-            Ok(request) => match route.handler.handle(request).await {
-                Ok(response) => return response,
-                Err(error) => error,
-            },
-            Err(error) => error,
-        };
+        let url = request.uri().to_string();
 
-        tokio::spawn(handle_error(error));
+        match process_route(&ctx, &client_addr, request, &route).await {
+            Ok(response) => return response,
+            Err(error) => {
+                tokio::spawn(handle_system_error(
+                    ctx.pool.clone(),
+                    url,
+                    client_addr,
+                    error,
+                ));
+            }
+        }
     };
 
-    Response::builder().status(404).body(Body::empty()).unwrap()
+    get_default_response()
 }

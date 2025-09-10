@@ -1,6 +1,8 @@
 use crate::{
-    db::model::{ADMIN_ID, User},
-    db::schema::users,
+    db::{
+        model::{ADMIN_ID, NewSystemLog, User},
+        schema::{system_log, users},
+    },
     utils::random::get_random_string,
 };
 use diesel::prelude::*;
@@ -41,4 +43,15 @@ pub async fn create_init_admin_user(
 pub async fn establish_db_connection(db_url: &str) -> anyhow::Result<bb8::Pool<AsyncPgConnection>> {
     let config = AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(db_url);
     Ok(bb8::Pool::builder().build(config).await?)
+}
+
+pub async fn insert_system_log(conn: &mut AsyncPgConnection, log: &str) -> anyhow::Result<()> {
+    let _: i32 = diesel::insert_into(system_log::table)
+        .values(&NewSystemLog {
+            log: log.to_owned(),
+        })
+        .returning(system_log::id)
+        .get_result(conn)
+        .await?;
+    return Ok(());
 }

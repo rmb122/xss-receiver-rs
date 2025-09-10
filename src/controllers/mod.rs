@@ -21,20 +21,17 @@ fn init(mut dispatcher: Dispatcher) -> Dispatcher {
             Route {
                 pattern: "^/abc$".to_string(),
                 handler: Box::new(FileHandler::new("/etc/passwd")),
-                send_mail: false,
-                write_log: false,
+                write_log: true,
             },
             Route {
                 pattern: "^/abc*$".to_string(),
                 handler: Box::new(FileHandler::new("/etc/hosts")),
-                send_mail: false,
-                write_log: false,
+                write_log: true,
             },
             Route {
                 pattern: "^/qqq$".to_string(),
-                handler: Box::new(FileHandler::new("/etc/locale.conf")),
-                send_mail: false,
-                write_log: false,
+                handler: Box::new(FileHandler::new("/etc/localex.conf")),
+                write_log: true,
             },
             Route {
                 pattern: "^/js$".to_string(),
@@ -42,8 +39,23 @@ fn init(mut dispatcher: Dispatcher) -> Dispatcher {
                     "response.send(request.client_addr, '2');response.send(new Uint8Array([98, 55, 66]));response.sendStatus(201);response.sendHeader('a', 'x');response.sendHeader('a33Q', ['x', 'x2']);",
                     3000,
                 )),
-                send_mail: false,
                 write_log: false,
+            },
+            Route {
+                pattern: "^/js233$".to_string(),
+                handler: Box::new(ScriptHandler::new(
+                    "123",
+                    3000,
+                )),
+                write_log: true,
+            },
+             Route {
+                pattern: "^/js456$".to_string(),
+                handler: Box::new(ScriptHandler::new(
+                    "xx",
+                    3000,
+                )),
+                write_log: true,
             },
         ])
         .expect("init error");
@@ -117,6 +129,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
     };
     return router.fallback(index::index).with_state(context);
 }
+
 // https://github.com/tokio-rs/axum/blob/main/examples/anyhow-error-response/src/main.rs
 // Make our own error that wraps `anyhow::Error`.
 struct AppError(anyhow::Error);

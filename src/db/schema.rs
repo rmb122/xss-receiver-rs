@@ -14,6 +14,16 @@ diesel::table! {
         body_type -> Int2,
         body -> Text,
         file -> Jsonb,
+        extra_info -> Jsonb,
+        error_log -> Nullable<Text>,
+        create_time -> Timestamp,
+    }
+}
+
+diesel::table! {
+    system_log (id) {
+        id -> Int4,
+        log -> Varchar,
         create_time -> Timestamp,
     }
 }
@@ -27,7 +37,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    http_log,
-    users,
-);
+diesel::allow_tables_to_appear_in_same_query!(http_log, system_log, users,);

@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, time::Duration};
 
 use async_trait::async_trait;
 use axum::{body::Body, http::Response};
-use boa_engine::{Context, JsError, Script, Source};
+use boa_engine::{Context, JsError, JsValue, Script, Source};
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
@@ -12,13 +12,12 @@ use super::script_engine::register_vars_to_context;
 
 #[async_trait]
 pub trait RouteHandler: Sync + Send {
-    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<Response<Body>>;
+    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)>;
 }
 
 pub struct Route {
     pub(crate) pattern: String,
     pub(crate) handler: Box<dyn RouteHandler>,
-    pub(crate) send_mail: bool,
     pub(crate) write_log: bool,
 }
 
@@ -36,12 +35,16 @@ impl FileHandler {
 
 #[async_trait]
 impl RouteHandler for FileHandler {
-    async fn handle(&self, _: ParsedRequest) -> anyhow::Result<Response<Body>> {
+    async fn handle(&self, _: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         Ok(
-            Response::builder().body(Body::from_stream(ReaderStream::with_capacity(
-                tokio::fs::File::open(&self.filename).await?,
-                10240, // 1M
-            )))?,
+           ( 
+                serde_json::Value::Null,
+                Response::builder().body(Body::from_stream(ReaderStream::with_capacity(
+                        tokio::fs::File::open(&self.filename).await?,
+                        10240, // 1M
+                    )
+                ))?
+            )
         )
     }
 }
@@ -79,12 +82,12 @@ impl From<JsError> for ScriptError {
 
 #[async_trait]
 impl RouteHandler for ScriptHandler {
-    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<Response<Body>> {
+    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         let script = self.script.clone();
         let timeout = self.timeout.clone();
 
         // 在新线程中运行 js
-        let response = task::spawn_blocking(move || {
+        let (result, response) = task::spawn_blocking(move || {
             let mut context = Context::default();
             let response = register_vars_to_context(&mut context, &request);
             let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> = Source::from_bytes(script.as_bytes());
@@ -94,12 +97,19 @@ impl RouteHandler for ScriptHandler {
                 .expect("create new async js runtime failed")
                 .block_on(async {
                     tokio::select! {
-                        v = script.evaluate_async(&mut context) => { v.map_err(|err| ScriptError(err.to_string()))?; Ok(response.cell.borrow().clone()) },
+                        v = script.evaluate_async(&mut context) => { 
+                            let mut v = v.map_err(|err| ScriptError(err.to_string()))?;
+                            if let JsValue::Undefined = v {
+                                v = JsValue::Null;
+                            }
+                            Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
+                        },
                         _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),
                     }
                 })
         }).await??;
 
+        
         let mut builder = Response::builder().status(response.status_code);
 
         for (k, vs) in response.headers {
@@ -108,6 +118,6 @@ impl RouteHandler for ScriptHandler {
             }
         }
 
-        Ok(builder.body(Body::from(response.body))?)
+        Ok((result, builder.body(Body::from(response.body))?))
     }
 }

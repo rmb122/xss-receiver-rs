@@ -23,5 +23,11 @@ pub struct DnsServer {
 }
 
 pub fn parse(cfg: &str) -> anyhow::Result<StartupConfig> {
-    return Ok(toml::from_str(cfg)?);
+    let cfg: StartupConfig = toml::from_str(cfg)?;
+    if cfg.http_server.upload_storage_path.is_empty() {
+        return Err(anyhow::anyhow!(
+            "upload_storage_path in config is empty, you must specify a path"
+        ));
+    }
+    return Ok(cfg);
 }
