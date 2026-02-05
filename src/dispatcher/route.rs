@@ -7,6 +7,7 @@ use tokio::task;
 use tokio_util::io::ReaderStream;
 
 use crate::parsed_request::ParsedRequest;
+use crate::db;
 
 use super::script_engine::register_vars_to_context;
 
@@ -21,11 +22,31 @@ pub struct Route {
     pub(crate) write_log: bool,
 }
 
-pub struct FileHandler {
+impl From<db::route::model::Route> for Route {
+    fn from(value: db::route::model::Route) -> Self {
+        let handler: Box<dyn RouteHandler> = match value.kind {
+            db::route::model::RouteKind::STATIC => Box::new(StaticHandler::new (
+               value.handler,
+            )),
+            db::route::model::RouteKind::SCRIPT => Box::new(ScriptHandler::new(
+                value.handler,
+              value.timeout,
+            )),
+        };
+
+        return Route {
+            pattern: value.pattern,
+            handler: handler,
+            write_log: value.write_log,
+        }
+    }
+}
+
+pub struct StaticHandler {
     filename: String,
 }
 
-impl FileHandler {
+impl StaticHandler {
     pub fn new<T: Into<String>>(filename: T) -> Self {
         return Self {
             filename: filename.into(),
@@ -34,7 +55,7 @@ impl FileHandler {
 }
 
 #[async_trait]
-impl RouteHandler for FileHandler {
+impl RouteHandler for StaticHandler {
     async fn handle(&self, _: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         Ok(
            ( 

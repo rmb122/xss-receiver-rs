@@ -44,6 +44,7 @@ diesel::table! {
         kind -> Int2,
         #[max_length = 1024]
         pattern -> Varchar,
+        timeout -> Int4,
         #[max_length = 1024]
         catalog -> Varchar,
         handler -> Varchar,

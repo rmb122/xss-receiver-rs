@@ -7,7 +7,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
-    dispatcher::{Dispatcher, FileHandler, Route, ScriptHandler},
+    dispatcher::Dispatcher,
     startup_config::StartupConfig,
     utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
 };

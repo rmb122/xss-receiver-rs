@@ -20,6 +20,7 @@ pub struct Route {
     pub id: i32,
     pub kind: RouteKind,
     pub pattern: String,
+    pub timeout: i32,
     pub catalog: String,
     pub handler: String,
     pub write_log: bool,
@@ -33,6 +34,7 @@ pub struct Route {
 pub struct NewRoute {
     pub kind: RouteKind,
     pub pattern: String,
+    pub timeout: i32,
     pub catalog: String,
     pub handler: String,
     pub write_log: bool,

@@ -38,13 +38,14 @@ CREATE INDEX system_log_create_time_idx ON system_log USING btree (create_time);
 
 CREATE TABLE route (
 	id serial4 NOT NULL,
-	kind int2 NULL,
-	pattern varchar(1024) NULL,
-	"catalog" varchar(1024) NULL,
-	"handler" varchar NULL,
-	write_log bool NULL,
-	"comment" text NULL,
-	create_time timestamp NULL,
+	kind int2 NOT NULL,
+	pattern varchar(1024) NOT NULL,
+	"timeout" int4 NOT NULL,
+	"catalog" varchar(1024) NOT NULL,
+	"handler" varchar NOT NULL,
+	write_log bool NOT NULL,
+	"comment" text NOT NULL,
+	create_time timestamp NOT NULL,
 	CONSTRAINT route_pk PRIMARY KEY (id)
 );
 CREATE INDEX route_create_time_idx ON route (create_time);
