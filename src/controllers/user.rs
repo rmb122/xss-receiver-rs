@@ -1,12 +1,10 @@
 use axum::{Json, extract::State};
-use diesel::prelude::*;
-use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Context,
     controllers::AppError,
-    db::{model::User, schema::users},
+    db::user::{helper::find_user_by_username, model::User},
     utils::{jwt::Claims, response::Response},
 };
 
@@ -28,13 +26,7 @@ pub async fn login(
     Json(request): Json<LoginRequeqst>,
 ) -> Result<Response<String>, AppError> {
     let mut conn = ctx.db_conn().await?;
-
-    let user: Option<User> = users::table
-        .filter(users::username.eq(&request.username))
-        .select(User::as_select())
-        .first(&mut conn)
-        .await
-        .optional()?;
+    let user: Option<User> = find_user_by_username(&mut conn, &request.username).await?;
 
     if let Some(user) = user {
         if password_auth::verify_password(&request.password, &user.password).is_ok() {

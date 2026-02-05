@@ -34,6 +34,22 @@ diesel::table! {
         #[max_length = 128]
         username -> Varchar,
         password -> Varchar,
+        create_time -> Timestamp,
+    }
+}
+
+diesel::table! {
+    route (id) {
+        id -> Int4,
+        kind -> Int2,
+        #[max_length = 1024]
+        pattern -> Varchar,
+        #[max_length = 1024]
+        catalog -> Varchar,
+        handler -> Varchar,
+        write_log -> Bool,
+        comment -> Text,
+        create_time -> Timestamp,
     }
 }
 

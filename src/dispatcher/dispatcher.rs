@@ -14,18 +14,20 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub fn new() -> Self {
-        Dispatcher {
+    pub fn empty() -> Self {
+        return Dispatcher {
             routes: vec![],
             route_regex_set: RegexSet::empty(),
-        }
+        };
     }
 
-    pub fn compile_routes(&mut self, routes: Vec<Route>) -> Result<()> {
-        self.routes = routes.into_iter().map(|x| Arc::new(x)).collect();
-        self.route_regex_set = RegexSet::new(self.routes.iter().map(|x| x.pattern.clone()))?;
+    pub fn new(routes: Vec<Route>) -> Result<Self> {
+        let route_regex_set = RegexSet::new(routes.iter().map(|x| x.pattern.clone()))?;
 
-        Ok(())
+        Ok(Dispatcher {
+            routes: routes.into_iter().map(|x| Arc::new(x)).collect(),
+            route_regex_set: route_regex_set,
+        })
     }
 
     pub fn dispatch(&self, request: &Request<Body>) -> Option<Arc<Route>> {

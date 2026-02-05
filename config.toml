@@ -2,7 +2,7 @@ db_url = "postgres://postgres:postgres@10.255.0.2/postgres"
 
 [http_server]
 listen = "0.0.0.0:8000"
-jwt_secret = "TEST_VALUE"               # empty menas random value
+jwt_secret = "TEST_VALUE"     # empty menas random value
 jwt_expire_time = 259200      # 3 days
 upload_storage_path = "/tmp"
 real_addr_header = ""

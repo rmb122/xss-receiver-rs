@@ -2,8 +2,7 @@ use log::{error, info};
 use std::net::SocketAddr;
 
 use crate::{
-    controllers::Context,
-    db::helper::{create_init_admin_user, establish_db_connection},
+    controllers::Context, db::establish_db_connection, db::user::helper::create_init_admin_user,
 };
 
 mod controllers;

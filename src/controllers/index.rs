@@ -5,15 +5,17 @@ use axum::{
     response::Response,
 };
 use base64::prelude::*;
-use diesel_async::{AsyncPgConnection, RunQueryDsl, pooled_connection::bb8};
+use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 use std::net::SocketAddr;
 
 use crate::{
     controllers::Context,
     db::{
-        helper::insert_system_log,
-        model::{BodyType, NewHttpLog},
-        schema::http_log,
+        http_log::{
+            helper::insert_http_log,
+            model::{BodyKind, NewHttpLog},
+        },
+        system_log::helper::insert_system_log,
     },
     parsed_request::ParsedRequestBody,
     utils::{diesel_json, upload},
@@ -54,7 +56,7 @@ pub fn get_http_log_from_request(
 ) -> anyhow::Result<NewHttpLog> {
     let (body_type, body, file) = match &request.parsed_body {
         ParsedRequestBody::None => (
-            BodyType::RAW,
+            BodyKind::RAW,
             BASE64_STANDARD.encode(&request.body),
             PersistedUploadFile::new(),
         ),
@@ -71,13 +73,13 @@ pub fn get_http_log_from_request(
             }
 
             (
-                BodyType::FORM,
+                BodyKind::FORM,
                 serde_json::to_string(form)?,
                 persised_upload_file,
             )
         }
         ParsedRequestBody::Json(value) => (
-            BodyType::JSON,
+            BodyKind::JSON,
             serde_json::to_string(value)?,
             PersistedUploadFile::new(),
         ),
@@ -147,11 +149,7 @@ pub async fn process_route(
         };
 
         let mut conn = ctx.db_conn().await?;
-        let _: i32 = diesel::insert_into(http_log::table)
-            .values(new_http_log)
-            .returning(http_log::id)
-            .get_result(&mut conn)
-            .await?;
+        let _: i32 = insert_http_log(&mut conn, &new_http_log).await?;
 
         response
     } else {

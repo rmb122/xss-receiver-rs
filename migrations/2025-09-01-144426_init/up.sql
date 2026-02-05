@@ -2,6 +2,7 @@ CREATE TABLE users (
 	id serial4 NOT NULL,
 	username varchar(128) NOT NULL,
 	"password" varchar NOT NULL,
+	create_time timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT users_pk PRIMARY KEY (id),
 	CONSTRAINT users_unique UNIQUE (username)
 );
@@ -33,3 +34,17 @@ CREATE TABLE system_log (
 	create_time timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT system_log_pk PRIMARY KEY (id)
 );
+CREATE INDEX system_log_create_time_idx ON system_log USING btree (create_time);
+
+CREATE TABLE route (
+	id serial4 NOT NULL,
+	kind int2 NULL,
+	pattern varchar(1024) NULL,
+	"catalog" varchar(1024) NULL,
+	"handler" varchar NULL,
+	write_log bool NULL,
+	"comment" text NULL,
+	create_time timestamp NULL,
+	CONSTRAINT route_pk PRIMARY KEY (id)
+);
+CREATE INDEX route_create_time_idx ON route (create_time);

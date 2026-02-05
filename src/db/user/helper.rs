@@ -1,15 +1,13 @@
 use crate::{
     db::{
-        model::{ADMIN_ID, NewSystemLog, User},
-        schema::{system_log, users},
+        schema::users,
+        user::model::{ADMIN_ID, User},
     },
     utils::random::get_random_string,
 };
+use chrono::Utc;
 use diesel::prelude::*;
-use diesel_async::{
-    AsyncPgConnection, RunQueryDsl,
-    pooled_connection::{AsyncDieselConnectionManager, bb8},
-};
+use diesel_async::{AsyncPgConnection, RunQueryDsl, pooled_connection::bb8};
 
 pub async fn create_init_admin_user(
     pool: &bb8::Pool<AsyncPgConnection>,
@@ -30,6 +28,7 @@ pub async fn create_init_admin_user(
                 id: ADMIN_ID,
                 username: username.clone(),
                 password: password_auth::generate_hash(&password),
+                create_time: Utc::now().naive_utc(),
             })
             .returning(users::id)
             .get_result(&mut conn)
@@ -40,18 +39,14 @@ pub async fn create_init_admin_user(
     }
 }
 
-pub async fn establish_db_connection(db_url: &str) -> anyhow::Result<bb8::Pool<AsyncPgConnection>> {
-    let config = AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(db_url);
-    Ok(bb8::Pool::builder().build(config).await?)
-}
-
-pub async fn insert_system_log(conn: &mut AsyncPgConnection, log: &str) -> anyhow::Result<()> {
-    let _: i32 = diesel::insert_into(system_log::table)
-        .values(&NewSystemLog {
-            log: log.to_owned(),
-        })
-        .returning(system_log::id)
-        .get_result(conn)
-        .await?;
-    return Ok(());
+pub async fn find_user_by_username(
+    conn: &mut AsyncPgConnection,
+    username: &str,
+) -> anyhow::Result<Option<User>> {
+    return Ok(users::table
+        .filter(users::username.eq(username))
+        .select(User::as_select())
+        .first(conn)
+        .await
+        .optional()?);
 }

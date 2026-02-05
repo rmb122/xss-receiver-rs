@@ -15,54 +15,6 @@ use crate::{
 mod index;
 mod user;
 
-fn init(mut dispatcher: Dispatcher) -> Dispatcher {
-    dispatcher
-        .compile_routes(vec![
-            Route {
-                pattern: "^/abc$".to_string(),
-                handler: Box::new(FileHandler::new("/etc/passwd")),
-                write_log: true,
-            },
-            Route {
-                pattern: "^/abc*$".to_string(),
-                handler: Box::new(FileHandler::new("/etc/hosts")),
-                write_log: true,
-            },
-            Route {
-                pattern: "^/qqq$".to_string(),
-                handler: Box::new(FileHandler::new("/etc/localex.conf")),
-                write_log: true,
-            },
-            Route {
-                pattern: "^/js$".to_string(),
-                handler: Box::new(ScriptHandler::new(
-                    "response.send(request.client_addr, '2');response.send(new Uint8Array([98, 55, 66]));response.sendStatus(201);response.sendHeader('a', 'x');response.sendHeader('a33Q', ['x', 'x2']);",
-                    3000,
-                )),
-                write_log: false,
-            },
-            Route {
-                pattern: "^/js233$".to_string(),
-                handler: Box::new(ScriptHandler::new(
-                    "123",
-                    3000,
-                )),
-                write_log: true,
-            },
-             Route {
-                pattern: "^/js456$".to_string(),
-                handler: Box::new(ScriptHandler::new(
-                    "xx",
-                    3000,
-                )),
-                write_log: true,
-            },
-        ])
-        .expect("init error");
-
-    dispatcher
-}
-
 #[derive(Clone)]
 pub struct Context {
     startup_config: Arc<StartupConfig>,
@@ -88,7 +40,7 @@ impl Context {
         Context {
             startup_config: Arc::new(config.to_owned()),
             pool,
-            dispatcher: Arc::new(RwLock::new(init(Dispatcher::new()))),
+            dispatcher: Arc::new(RwLock::new(Dispatcher::empty())),
             jwt_manager: Arc::new(jwt_manager),
         }
     }

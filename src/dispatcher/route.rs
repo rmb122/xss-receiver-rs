@@ -50,14 +50,14 @@ impl RouteHandler for FileHandler {
 }
 
 pub struct ScriptHandler {
-    script: String,
+    filename: String,
     timeout: i32,
 }
 
 impl ScriptHandler {
-    pub fn new<T: Into<String>>(script: T, timeout: i32) -> Self {
+    pub fn new<T: Into<String>>(filename: T, timeout: i32) -> Self {
         return Self {
-            script: script.into(),
+            filename: filename.into(),
             timeout,
         };
     }
@@ -83,7 +83,8 @@ impl From<JsError> for ScriptError {
 #[async_trait]
 impl RouteHandler for ScriptHandler {
     async fn handle(&self, request: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
-        let script = self.script.clone();
+        // 每次运行时重新读取 script
+        let script = tokio::fs::read_to_string(&self.filename).await?;
         let timeout = self.timeout.clone();
 
         // 在新线程中运行 js
