@@ -6,6 +6,8 @@ pub fn persist_upload_file(content: &[u8], upload_dir: &str) -> anyhow::Result<S
     hasher.update(content);
     let hash = hex::encode(hasher.finalize());
     // hash 文件名作为
-    fs::write(Path::new(upload_dir).join(&hash), content)?;
+    if !fs::exists(Path::new(upload_dir).join(&hash))? {
+        fs::write(Path::new(upload_dir).join(&hash), content)?;
+    }
     return Ok(hash);
 }

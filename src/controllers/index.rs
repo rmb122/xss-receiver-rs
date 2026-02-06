@@ -61,9 +61,9 @@ pub fn get_http_log_from_request(
             PersistedUploadFile::new(),
         ),
         ParsedRequestBody::Form(form, file) => {
-            let mut persised_upload_file = PersistedUploadFile::new();
+            let mut persisted_upload_file = PersistedUploadFile::new();
             for i in file.iter() {
-                persised_upload_file.insert(
+                persisted_upload_file.insert(
                     i.0.clone(),
                     (
                         i.1.0.clone(),
@@ -75,7 +75,7 @@ pub fn get_http_log_from_request(
             (
                 BodyKind::FORM,
                 serde_json::to_string(form)?,
-                persised_upload_file,
+                persisted_upload_file,
             )
         }
         ParsedRequestBody::Json(value) => (

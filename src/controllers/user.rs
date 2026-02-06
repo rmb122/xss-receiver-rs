@@ -15,7 +15,7 @@ pub struct LoginedUser {
 }
 
 #[derive(Deserialize, utoipa::ToSchema)]
-pub struct LoginRequeqst {
+pub struct LoginRequest {
     username: String,
     password: String,
 }
@@ -23,7 +23,7 @@ pub struct LoginRequeqst {
 #[utoipa::path(post, path = "/login", responses((status = OK, body = Response<String>)))]
 pub async fn login(
     State(ctx): State<Context>,
-    Json(request): Json<LoginRequeqst>,
+    Json(request): Json<LoginRequest>,
 ) -> Result<Response<String>, AppError> {
     let mut conn = ctx.db_conn().await?;
     let user: Option<User> = find_user_by_username(&mut conn, &request.username).await?;

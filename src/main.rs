@@ -83,8 +83,12 @@ async fn main() {
 
     axum::serve(
         listener,
-        controllers::get_app_router(Context::new(&config, db_pool))
-            .into_make_service_with_connect_info::<SocketAddr>(),
+        controllers::get_app_router(
+            Context::new(&config, db_pool)
+                .await
+                .expect("failed to initialize context"),
+        )
+        .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
     .unwrap();

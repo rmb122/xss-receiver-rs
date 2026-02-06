@@ -7,6 +7,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
+    db::route::helper::get_all_routes,
     dispatcher::Dispatcher,
     startup_config::StartupConfig,
     utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
@@ -24,7 +25,10 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(config: &StartupConfig, pool: bb8::Pool<AsyncPgConnection>) -> Self {
+    pub async fn new(
+        config: &StartupConfig,
+        pool: bb8::Pool<AsyncPgConnection>,
+    ) -> anyhow::Result<Self> {
         let mut secret = config.http_server.jwt_secret.trim().as_bytes().to_vec();
         if secret.len() == 0 {
             log::info!("jwt secret not specified, using random generated value");
@@ -37,12 +41,20 @@ impl Context {
             config.http_server.jwt_expire_time,
         );
 
-        Context {
+        let mut conn = pool.get().await?;
+
+        Ok(Context {
             startup_config: Arc::new(config.to_owned()),
-            pool,
-            dispatcher: Arc::new(RwLock::new(Dispatcher::empty())),
+            pool: pool.clone(),
+            dispatcher: Arc::new(RwLock::new(Dispatcher::new(
+                get_all_routes(&mut conn)
+                    .await?
+                    .into_iter()
+                    .map(|x| x.into())
+                    .collect(),
+            )?)),
             jwt_manager: Arc::new(jwt_manager),
-        }
+        })
     }
 
     pub async fn db_conn(&self) -> anyhow::Result<bb8::PooledConnection<'_, AsyncPgConnection>> {

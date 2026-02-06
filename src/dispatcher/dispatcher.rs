@@ -14,13 +14,6 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub fn empty() -> Self {
-        return Dispatcher {
-            routes: vec![],
-            route_regex_set: RegexSet::empty(),
-        };
-    }
-
     pub fn new(routes: Vec<Route>) -> Result<Self> {
         let route_regex_set = RegexSet::new(routes.iter().map(|x| x.pattern.clone()))?;
 
