@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LoginedUser {
+pub struct LoggedUser {
     pub id: i32,
     pub username: String,
 }
@@ -31,7 +31,7 @@ pub async fn login(
     if let Some(user) = user {
         if password_auth::verify_password(&request.password, &user.password).is_ok() {
             return Ok(Response::<String>::ok().msg("login success").payload(
-                ctx.jwt_manager.encode_token(LoginedUser {
+                ctx.jwt_manager.encode_token(LoggedUser {
                     id: user.id,
                     username: user.username,
                 })?,
@@ -41,7 +41,7 @@ pub async fn login(
     return Err(anyhow::anyhow!("username or password error").into());
 }
 
-#[utoipa::path(get, path = "/info", responses((status = OK, body = Response<LoginedUser>)))]
-pub async fn info(Claims(user): Claims<LoginedUser>) -> Response<LoginedUser> {
+#[utoipa::path(get, path = "/info", responses((status = OK, body = Response<LoggedUser>)))]
+pub async fn info(Claims(user): Claims<LoggedUser>) -> Response<LoggedUser> {
     Response::ok().payload(user)
 }
