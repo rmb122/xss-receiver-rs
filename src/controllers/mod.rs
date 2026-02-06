@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 use jsonwebtoken::Algorithm;
+use utoipa::openapi::Server;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
 
@@ -71,13 +72,23 @@ impl FromRef<Context> for Arc<JwtManager> {
 const OPEN_API_URL: &str = "/api-docs/openapi.json";
 
 pub fn get_app_router(context: Context) -> Router<()> {
-    let user_router = OpenApiRouter::new().routes(routes!(user::login, user::info));
-    let (mut admin_router, api) = OpenApiRouter::new()
+    let user_router = OpenApiRouter::new()
+        .routes(routes!(user::login, user::current))
+        .routes(routes!(user::create_user))
+        .routes(routes!(user::get_users))
+        .routes(routes!(user::delete_user))
+        .routes(routes!(user::update_user));
+    let (mut admin_router, mut api) = OpenApiRouter::new()
         .nest("/user", user_router)
         .split_for_parts();
 
     let prefix = &context.startup_config.http_server.admin_prefix;
     let prefix = prefix.strip_suffix("/").unwrap_or(prefix);
+
+    // 为 OpenAPI 文档添加服务器前缀
+    if !prefix.is_empty() && prefix != "/" {
+        api.servers = Some(vec![Server::new(prefix)]);
+    }
 
     // add open api
     admin_router = admin_router.merge(

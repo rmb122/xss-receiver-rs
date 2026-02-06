@@ -21,6 +21,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    route (id) {
+        id -> Int4,
+        kind -> Int2,
+        #[max_length = 1024]
+        pattern -> Varchar,
+        timeout -> Int4,
+        #[max_length = 1024]
+        catalog -> Varchar,
+        handler -> Varchar,
+        write_log -> Bool,
+        comment -> Text,
+        create_time -> Timestamp,
+    }
+}
+
+diesel::table! {
     system_log (id) {
         id -> Int4,
         log -> Varchar,
@@ -38,20 +54,9 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    route (id) {
-        id -> Int4,
-        kind -> Int2,
-        #[max_length = 1024]
-        pattern -> Varchar,
-        timeout -> Int4,
-        #[max_length = 1024]
-        catalog -> Varchar,
-        handler -> Varchar,
-        write_log -> Bool,
-        comment -> Text,
-        create_time -> Timestamp,
-    }
-}
-
-diesel::allow_tables_to_appear_in_same_query!(http_log, system_log, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    http_log,
+    route,
+    system_log,
+    users,
+);
