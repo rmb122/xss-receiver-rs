@@ -1,6 +1,7 @@
 use diesel::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Deserialize, utoipa::ToSchema)]
 #[diesel(table_name = crate::db::schema::system_log)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct SystemLog {
