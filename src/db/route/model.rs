@@ -42,7 +42,7 @@ pub struct Route {
     pub create_time: chrono::NaiveDateTime,
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Clone)]
 #[diesel(table_name = crate::db::schema::route)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewRoute {

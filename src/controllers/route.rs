@@ -1,7 +1,13 @@
+use std::sync::{Arc, RwLock};
+
 use axum::{Json, extract::State};
+use chrono::Utc;
+use diesel_async::AsyncPgConnection;
 use serde::Deserialize;
 
 use crate::controllers::user::LoggedUser;
+use crate::db::route::helper::{find_route_by_id, get_all_routes_except};
+use crate::dispatcher::Dispatcher;
 use crate::{
     Context,
     controllers::AppError,
@@ -46,6 +52,69 @@ pub struct UpdateRouteRequest {
     comment: String,
 }
 
+pub enum ModifyKind {
+    NEW,
+    REPLACE,
+    DELETE,
+}
+
+pub struct ModifyRequest {
+    kind: ModifyKind,
+    route_id: i32,
+    route: Option<NewRoute>,
+}
+
+pub async fn compile_routes(
+    conn: &mut AsyncPgConnection,
+    modify: ModifyRequest,
+) -> anyhow::Result<Dispatcher> {
+    let mut routes = match modify.kind {
+        ModifyKind::NEW => get_all_routes(conn).await?,
+        ModifyKind::REPLACE | ModifyKind::DELETE => {
+            // route 必须存在
+            find_route_by_id(conn, modify.route_id).await?;
+            // 获取除了目标之外的所有 route
+            get_all_routes_except(conn, modify.route_id).await?
+        }
+    };
+
+    let routes = match modify.kind {
+        ModifyKind::DELETE => routes,
+        ModifyKind::NEW | ModifyKind::REPLACE => {
+            let new_route = if let Some(new_route) = modify.route {
+                new_route
+            } else {
+                return Err(anyhow::anyhow!(
+                    "route must provide while new or replace route"
+                ));
+            };
+
+            let new_route = Route {
+                id: modify.route_id,
+                kind: new_route.kind.clone(),
+                pattern: new_route.pattern.clone(),
+                timeout: new_route.timeout,
+                catalog: new_route.catalog.clone(),
+                handler: new_route.handler.clone(),
+                write_log: new_route.write_log,
+                comment: new_route.comment.clone(),
+                create_time: Utc::now().naive_utc(),
+            };
+
+            routes.push(new_route);
+            routes
+        }
+    };
+
+    return Dispatcher::new(routes.into_iter().map(|x| x.into()).collect())
+        .map_err(|err| return anyhow::anyhow!("compile new dispatcher failed: {:?}", err));
+}
+
+pub fn install_dispatcher(holder: &Arc<RwLock<Dispatcher>>, new: Dispatcher) {
+    let mut guard = holder.write().expect("lock poisoned");
+    *guard = new;
+}
+
 // 创建路由
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<Route>)))]
 pub async fn create_route(
@@ -64,7 +133,21 @@ pub async fn create_route(
     };
 
     let mut conn = ctx.db_conn().await?;
+
+    // 1. 先检查路由数据是否合法
+    // 2. 数据库中新建
+    // 3. 替换 dispatcher
+    let new_dispatcher = compile_routes(
+        &mut conn,
+        ModifyRequest {
+            kind: ModifyKind::NEW,
+            route_id: 0,
+            route: None,
+        },
+    )
+    .await?;
     let route = db_create_route(&mut conn, &new_route).await?;
+    install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
     Ok(Response::<Route>::ok()
         .msg("route created successfully")
@@ -79,7 +162,21 @@ pub async fn delete_route(
     Json(request): Json<DeleteRouteRequest>,
 ) -> Result<Response<bool>, AppError> {
     let mut conn = ctx.db_conn().await?;
+
+    // 1. 先检查路由是否存在
+    // 2. 数据库中删除
+    // 3. 替换 dispatcher
+    let new_dispatcher = compile_routes(
+        &mut conn,
+        ModifyRequest {
+            kind: ModifyKind::DELETE,
+            route_id: request.route_id,
+            route: None,
+        },
+    )
+    .await?;
     let deleted = db_delete_route(&mut conn, request.route_id).await?;
+    install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
     if deleted {
         Ok(Response::<bool>::ok()
@@ -122,7 +219,21 @@ pub async fn update_route(
     };
 
     let mut conn = ctx.db_conn().await?;
+
+    // 1. 先检查路由是否正确
+    // 2. 数据库更新成功
+    // 3. 替换 dispatcher
+    let new_dispatcher = compile_routes(
+        &mut conn,
+        ModifyRequest {
+            kind: ModifyKind::REPLACE,
+            route_id: request.route_id,
+            route: Some(updated_route.clone()),
+        },
+    )
+    .await?;
     let route = db_update_route(&mut conn, request.route_id, &updated_route).await?;
+    install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
     Ok(Response::<Route>::ok()
         .msg("route updated successfully")
