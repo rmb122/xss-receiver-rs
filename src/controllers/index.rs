@@ -130,7 +130,7 @@ pub async fn process_route(
     if route.write_log {
         new_http_log = Some(get_http_log_from_request(
             &request,
-            &ctx.startup_config.http_server.upload_storage_path,
+            &ctx.startup_config.storage_path,
         )?);
     }
 

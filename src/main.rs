@@ -10,6 +10,7 @@ mod db;
 mod dispatcher;
 mod parsed_request;
 mod startup_config;
+mod storage;
 mod utils;
 
 fn init_logger() {
