@@ -1,15 +1,24 @@
-use axum::{Json, extract::State};
+use std::net::SocketAddr;
+
+use axum::{
+    Json,
+    extract::{ConnectInfo, State},
+    http::HeaderMap,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Context,
-    controllers::AppError,
-    db::user::{
-        helper::{
-            create_user as db_create_user, delete_user as db_delete_user, find_user_by_username,
-            get_all_users, update_user as db_update_user,
+    controllers::{AppError, index::get_real_addr_from_request},
+    db::{
+        system_log::helper::insert_system_log,
+        user::{
+            helper::{
+                create_user as db_create_user, delete_user as db_delete_user,
+                find_user_by_username, get_all_users, update_user as db_update_user,
+            },
+            model::{ADMIN_ID, User},
         },
-        model::{ADMIN_ID, User},
     },
     utils::{jwt::Claims, response::Response},
 };
@@ -29,6 +38,8 @@ pub struct LoginRequest {
 #[utoipa::path(post, path = "/login", responses((status = OK, body = Response<String>)))]
 pub async fn login(
     State(ctx): State<Context>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<Response<String>, AppError> {
     let mut conn = ctx.db_conn().await?;
@@ -36,6 +47,24 @@ pub async fn login(
 
     if let Some(user) = user {
         if password_auth::verify_password(&request.password, &user.password).is_ok() {
+            let client_addr: SocketAddr = if let Ok(client_addr) =
+                get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &headers)
+            {
+                client_addr
+            } else {
+                addr
+            };
+
+            let _ = insert_system_log(
+                &mut conn,
+                &format!(
+                    "user {} logged from {}",
+                    &user.username,
+                    client_addr.to_string()
+                ),
+            )
+            .await;
+
             return Ok(Response::<String>::ok().msg("login success").payload(
                 ctx.jwt_manager.encode_token(LoggedUser {
                     id: user.id,

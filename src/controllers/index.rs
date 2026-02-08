@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{ConnectInfo, State},
-    http::Request,
+    http::{HeaderMap, Request},
     response::Response,
 };
 use base64::prelude::*;
@@ -98,14 +98,11 @@ pub async fn get_http_log_from_request(
     })
 }
 
-fn get_real_addr_from_request(
+pub fn get_real_addr_from_request(
     real_addr_header: &str,
-    request: &Request<Body>,
+    headers: &HeaderMap,
 ) -> anyhow::Result<SocketAddr> {
-    if let (true, Some(real_addr)) = (
-        real_addr_header.len() > 0,
-        request.headers().get(real_addr_header),
-    ) {
+    if let (true, Some(real_addr)) = (real_addr_header.len() > 0, headers.get(real_addr_header)) {
         Ok(real_addr.to_str()?.parse()?)
     } else {
         Err(anyhow::anyhow!("real addr header not found"))
@@ -168,7 +165,7 @@ pub async fn index(
     request: Request<Body>,
 ) -> Response<Body> {
     let client_addr: SocketAddr = if let Ok(client_addr) =
-        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &request)
+        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, request.headers())
     {
         client_addr
     } else {

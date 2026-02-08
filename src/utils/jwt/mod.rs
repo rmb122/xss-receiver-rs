@@ -39,6 +39,7 @@ where
         let mut token = if let Some(token) = parts.headers.get(AUTHORIZATION) {
             token.to_str().map_err(|_| AuthError {})?.to_owned()
         } else {
+            // 其次使用 cookie
             let jar = CookieJar::from_headers(&parts.headers);
             if let Some(token) = jar.get(AUTHORIZATION.as_str()) {
                 token.value_trimmed().to_owned()
