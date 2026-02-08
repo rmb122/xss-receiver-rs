@@ -78,6 +78,18 @@ impl UserStorage {
         Ok(())
     }
 
+    /// 重命名指定目录
+    pub async fn rename_directory(&self, directory: &str, new_name: &str) -> anyhow::Result<()> {
+        validate_path_component(directory)?;
+        validate_path_component(new_name)?;
+
+        let old_path = self.path.join(directory);
+        let new_path = self.path.join(new_name);
+
+        fs::rename(&old_path, &new_path).await?;
+        Ok(())
+    }
+
     /// 一次性读取文件
     pub async fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
         validate_path_component(directory)?;
@@ -148,6 +160,24 @@ impl UserStorage {
         let path = self.path.join(directory).join(name);
 
         fs::remove_file(&path).await?;
+        Ok(())
+    }
+
+    /// 重命名指定文件
+    pub async fn rename_file(
+        &self,
+        directory: &str,
+        name: &str,
+        new_name: &str,
+    ) -> anyhow::Result<()> {
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
+        validate_path_component(new_name)?;
+
+        let old_path = self.path.join(directory).join(name);
+        let new_path = self.path.join(directory).join(new_name);
+
+        fs::rename(&old_path, &new_path).await?;
         Ok(())
     }
 }

@@ -121,10 +121,12 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(file::list_directories))
         .routes(routes!(file::create_directory))
         .routes(routes!(file::delete_directory))
+        .routes(routes!(file::rename_directory))
         .routes(routes!(file::list_files_in_directory))
         .routes(routes!(file::upload_file))
         .routes(routes!(file::download_file))
         .routes(routes!(file::delete_file))
+        .routes(routes!(file::rename_file))
         .routes(routes!(file::upload_part))
         .routes(routes!(file::merge_parts))
         .routes(routes!(file::download_log_file));

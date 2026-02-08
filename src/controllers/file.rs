@@ -38,6 +38,12 @@ pub struct MergeRequest {
     pub filename: String,
 }
 
+/// 重命名请求
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct RenameRequest {
+    pub new_name: String,
+}
+
 fn make_file_response(file: File, filename: &str) -> impl IntoResponse + use<> {
     // 使用 ReaderStream 将文件转为流，避免一次性读入内存
     let stream = ReaderStream::new(file);
@@ -111,6 +117,30 @@ pub async fn delete_directory(
     ctx.storage.user().delete_directory(&directory).await?;
     Ok(Response::ok()
         .msg("directory deleted successfully")
+        .payload(true))
+}
+
+/// 重命名用户目录
+#[utoipa::path(
+    patch,
+    path = "/user/{directory}/",
+    responses(
+        (status = OK, body = Response<bool>)
+    ),
+)]
+pub async fn rename_directory(
+    State(ctx): State<Context>,
+    Claims(_user): Claims<LoggedUser>,
+    Path(directory): Path<String>,
+    Json(request): Json<RenameRequest>,
+) -> Result<Response<bool>, AppError> {
+    ctx.storage
+        .user()
+        .rename_directory(&directory, &request.new_name)
+        .await?;
+
+    Ok(Response::ok()
+        .msg("directory renamed successfully")
         .payload(true))
 }
 
@@ -207,6 +237,30 @@ pub async fn delete_file(
 
     Ok(Response::ok()
         .msg("file deleted successfully")
+        .payload(true))
+}
+
+/// 重命名文件
+#[utoipa::path(
+    patch,
+    path = "/user/{directory}/{file}",
+    responses(
+        (status = OK, body = Response<bool>)
+    ),
+)]
+pub async fn rename_file(
+    State(ctx): State<Context>,
+    Claims(_user): Claims<LoggedUser>,
+    Path((directory, file)): Path<(String, String)>,
+    Json(request): Json<RenameRequest>,
+) -> Result<Response<bool>, AppError> {
+    ctx.storage
+        .user()
+        .rename_file(&directory, &file, &request.new_name)
+        .await?;
+
+    Ok(Response::ok()
+        .msg("file renamed successfully")
         .payload(true))
 }
 
