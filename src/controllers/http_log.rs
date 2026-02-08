@@ -1,4 +1,4 @@
-use axum::{Json, extract::State};
+use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use crate::controllers::user::LoggedUser;
@@ -19,7 +19,7 @@ pub struct PaginatedHttpLogResponse {
 }
 
 // 分页查询请求
-#[derive(Deserialize, utoipa::ToSchema)]
+#[derive(Deserialize, utoipa::ToSchema, utoipa::IntoParams)]
 pub struct PaginatedRequest {
     #[serde(default = "default_page")]
     pub page: i64,
@@ -36,11 +36,11 @@ fn default_page_size() -> i64 {
 }
 
 // 分页查询 HTTP 日志
-#[utoipa::path(get, path = "/", responses((status = OK, body = Response<PaginatedHttpLogResponse>)))]
+#[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedHttpLogResponse>)))]
 pub async fn get_http_logs(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
-    Json(request): Json<PaginatedRequest>,
+    Query(request): Query<PaginatedRequest>,
 ) -> Result<Response<PaginatedHttpLogResponse>, AppError> {
     // 验证分页参数
     if request.page < 1 {
