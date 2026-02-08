@@ -5,6 +5,7 @@ use axum::{
     http::{header::AUTHORIZATION, request::Parts},
     response::IntoResponse,
 };
+use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -18,7 +19,7 @@ const AUTHORIZATION_PREFIX: &str = "Bearer ";
 pub struct Claims<T>(pub T);
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExpireablePayload<T> {
+pub struct ExpirablePayload<T> {
     exp: i64,
 
     #[serde(flatten)]
@@ -34,20 +35,24 @@ where
     type Rejection = AuthError;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // 先从 headers 里面获取
         let mut token = if let Some(token) = parts.headers.get(AUTHORIZATION) {
-            token.to_str().map_err(|_| AuthError {})?
+            token.to_str().map_err(|_| AuthError {})?.to_owned()
         } else {
-            return Err(AuthError {});
+            let jar = CookieJar::from_headers(&parts.headers);
+            if let Some(token) = jar.get(AUTHORIZATION.as_str()) {
+                token.value_trimmed().to_owned()
+            } else {
+                return Err(AuthError {});
+            }
         };
 
         if token.trim().starts_with(AUTHORIZATION_PREFIX) {
-            token = token[AUTHORIZATION_PREFIX.len()..].trim()
-        } else {
-            return Err(AuthError {});
+            token = token[AUTHORIZATION_PREFIX.len()..].trim().to_owned()
         }
 
         let decoder = Arc::<JwtManager>::from_ref(state);
-        let token_data: TokenData<ExpireablePayload<T>> =
+        let token_data: TokenData<ExpirablePayload<T>> =
             decoder.decode(&token).map_err(|_| AuthError {})?;
 
         Ok(Claims(token_data.claims.payload))
@@ -96,7 +101,7 @@ impl JwtManager {
     pub fn encode_token<T: Serialize>(&self, claim: T) -> anyhow::Result<String> {
         return Ok(jsonwebtoken::encode(
             &Header::new(self.algorithm),
-            &ExpireablePayload {
+            &ExpirablePayload {
                 exp: (Utc::now() + Duration::seconds(self.expire_time)).timestamp(),
                 payload: claim,
             },
