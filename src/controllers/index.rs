@@ -17,13 +17,13 @@ use crate::{
         },
         system_log::helper::insert_system_log,
     },
-    parsed_request::ParsedRequestBody,
     storage::Storage,
     utils::diesel_json,
+    utils::parsed_request::ParsedRequestBody,
 };
 use crate::{
     dispatcher::Route,
-    parsed_request::{ParsedRequest, PersistedUploadFile},
+    utils::parsed_request::{ParsedRequest, PersistedUploadFile},
 };
 
 pub async fn handle_system_error(

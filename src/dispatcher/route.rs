@@ -7,7 +7,7 @@ use tokio::task;
 use tokio_util::io::ReaderStream;
 
 use crate::db;
-use crate::parsed_request::ParsedRequest;
+use crate::utils::parsed_request::ParsedRequest;
 use crate::storage::Storage;
 
 use super::script_engine::register_vars_to_context;

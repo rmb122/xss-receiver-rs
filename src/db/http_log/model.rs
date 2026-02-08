@@ -4,8 +4,8 @@ use diesel_enum::DbEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::db::EnumNotFoundError;
-use crate::parsed_request::{KeyValues, PersistedUploadFile};
 use crate::utils::diesel_json;
+use crate::utils::parsed_request::{KeyValues, PersistedUploadFile};
 
 #[derive(
     Debug,

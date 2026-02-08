@@ -8,7 +8,6 @@ use crate::{
 mod controllers;
 mod db;
 mod dispatcher;
-mod parsed_request;
 mod startup_config;
 mod storage;
 mod utils;

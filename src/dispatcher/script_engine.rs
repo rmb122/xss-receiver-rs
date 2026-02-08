@@ -10,7 +10,7 @@ use boa_engine::{JsError, JsResult, JsValue};
 use boa_gc::Gc;
 use boa_gc::{Finalize, Trace, empty_trace};
 
-use crate::parsed_request::ParsedRequest;
+use crate::utils::parsed_request::ParsedRequest;
 
 pub struct ResponseCell {
     pub cell: RefCell<Response>,
