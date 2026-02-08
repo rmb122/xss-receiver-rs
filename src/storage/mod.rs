@@ -11,7 +11,6 @@ use tokio::fs;
 
 /// Storage 主类，管理三种不同类型的存储
 pub struct Storage {
-    base_path: PathBuf,
     user: UserStorage,
     log: LogStorage,
     temp: TempStorage,
@@ -44,12 +43,7 @@ impl Storage {
         let log = LogStorage::new(log_path);
         let temp = TempStorage::new(temp_path);
 
-        Ok(Storage {
-            base_path,
-            user,
-            log,
-            temp,
-        })
+        Ok(Storage { user, log, temp })
     }
 
     /// 获取 UserStorage 实例

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
 
@@ -28,28 +29,51 @@ impl UserStorage {
         Ok(())
     }
 
-    /// 列出根目录下的所有直接子目录（不递归）
-    pub async fn list_directory(&self) -> anyhow::Result<Vec<String>> {
-        let mut directories = Vec::new();
+    /// 递归列出所有目录及其文件
+    pub async fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<String>>> {
+        let mut result = HashMap::new();
         let mut entries = fs::read_dir(&self.path).await?;
 
         while let Some(entry) = entries.next_entry().await? {
             let file_type = entry.file_type().await?;
             if file_type.is_dir() {
-                if let Some(name) = entry.file_name().to_str() {
-                    directories.push(name.to_string());
+                if let Some(dir_name) = entry.file_name().to_str() {
+                    let dir_name_string = dir_name.to_string();
+
+                    // 列出该目录下的所有文件
+                    let files = self.list_directory_file(&dir_name_string).await?;
+                    result.insert(dir_name_string, files);
                 }
             }
         }
 
-        Ok(directories)
+        Ok(result)
+    }
+
+    /// 列出指定目录下文件
+    pub async fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<String>> {
+        let mut files = Vec::new();
+
+        let path = self.path.join(directory);
+        let mut entries = fs::read_dir(&path).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let file_type = entry.file_type().await?;
+            if file_type.is_file() {
+                if let Some(name) = entry.file_name().to_str() {
+                    files.push(name.to_string());
+                }
+            }
+        }
+
+        Ok(files)
     }
 
     /// 在根目录下创建新目录
-    pub async fn new_directory(&self, name: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(name)?;
+    pub async fn new_directory(&self, directory: &str) -> anyhow::Result<()> {
+        Self::validate_path_component(directory)?;
 
-        let path = self.path.join(name);
+        let path = self.path.join(directory);
 
         // 如果目录已存在不报错
         match fs::create_dir(&path).await {
@@ -60,11 +84,10 @@ impl UserStorage {
     }
 
     /// 删除指定目录
-    pub async fn delete_directory(&self, directory: &str, name: &str) -> anyhow::Result<()> {
+    pub async fn delete_directory(&self, directory: &str) -> anyhow::Result<()> {
         Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
 
-        let path = self.path.join(directory).join(name);
+        let path = self.path.join(directory);
 
         fs::remove_dir_all(&path).await?;
         Ok(())
@@ -86,7 +109,7 @@ impl UserStorage {
         &self,
         directory: &str,
         name: &str,
-        options: fs::OpenOptions,
+        options: &mut fs::OpenOptions,
     ) -> anyhow::Result<File> {
         Self::validate_path_component(directory)?;
         Self::validate_path_component(name)?;

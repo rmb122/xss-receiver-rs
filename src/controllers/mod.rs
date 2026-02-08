@@ -15,6 +15,7 @@ use crate::{
     utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
 };
 
+mod file;
 mod http_log;
 mod index;
 mod route;
@@ -97,11 +98,24 @@ pub fn get_app_router(context: Context) -> Router<()> {
 
     let system_log_router = OpenApiRouter::new().routes(routes!(system_log::get_system_logs));
 
+    let file_router = OpenApiRouter::new()
+        .routes(routes!(file::list_directories))
+        .routes(routes!(file::create_directory))
+        .routes(routes!(file::delete_directory))
+        .routes(routes!(file::list_files_in_directory))
+        .routes(routes!(file::upload_file))
+        .routes(routes!(file::download_file))
+        .routes(routes!(file::delete_file))
+        .routes(routes!(file::upload_part))
+        .routes(routes!(file::merge_parts))
+        .routes(routes!(file::download_log_file));
+
     let (mut admin_router, mut api) = OpenApiRouter::new()
         .nest("/user", user_router)
         .nest("/route", route_router)
         .nest("/http_log", http_log_router)
         .nest("/system_log", system_log_router)
+        .nest("/file", file_router)
         .split_for_parts();
 
     let prefix = &context.startup_config.http_server.admin_prefix;

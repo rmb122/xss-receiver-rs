@@ -1,6 +1,6 @@
 use sha1::Digest;
 use std::path::PathBuf;
-use tokio::fs;
+use tokio::fs::{self, File};
 
 use crate::storage::validate_hex_string;
 
@@ -31,17 +31,17 @@ impl LogStorage {
         Ok(hash)
     }
 
+    /// 打开文件
+    pub async fn open(&self, hash: &str, options: &mut fs::OpenOptions) -> anyhow::Result<File> {
+        let file_path = self.path.join(validate_hex_string(hash)?);
+        let content = options.open(file_path).await?;
+        Ok(content)
+    }
+
     /// 读取指定 hash 的文件内容
     pub async fn read(&self, hash: &str) -> anyhow::Result<Vec<u8>> {
         let file_path = self.path.join(validate_hex_string(hash)?);
         let content = fs::read(file_path).await?;
         Ok(content)
-    }
-
-    /// 删除指定 hash 的文件
-    pub async fn delete(&self, hash: &str) -> anyhow::Result<()> {
-        let file_path = self.path.join(validate_hex_string(hash)?);
-        fs::remove_file(file_path).await?;
-        Ok(())
     }
 }
