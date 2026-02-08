@@ -4,6 +4,7 @@ use serde::Deserialize;
 pub struct StartupConfig {
     pub db_url: String,
     pub storage_path: String,
+    pub cors: bool,
 
     pub ip2region: Ip2Region,
     pub http_server: HttpServer,

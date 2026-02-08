@@ -1,12 +1,12 @@
 use axum::{
     body::Body,
     extract::{ConnectInfo, State},
-    http::{HeaderMap, Request},
+    http::{HeaderMap, HeaderName, HeaderValue, Request},
     response::Response,
 };
 use base64::prelude::*;
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
-use std::net::SocketAddr;
+use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 
 use crate::{
     controllers::Context,
@@ -110,6 +110,51 @@ pub fn get_real_addr_from_request(
     }
 }
 
+fn process_response_headers(request_headers: &HeaderMap, mut response: Response) -> Response {
+    let mut response_headers: HashMap<String, String> = HashMap::new();
+
+    response_headers.insert(
+        "Cache-Control".to_owned(),
+        "no-store, no-cache, must-revalidate".to_owned(),
+    );
+    response_headers.insert("Pragma".to_owned(), "no-cache".to_owned());
+    response_headers.insert("Expires".to_owned(), "0".to_owned());
+
+    if let Some(header_value) = request_headers.get("Origin") {
+        // 确定为跨域请求
+        response_headers.insert(
+            "Origin".to_owned(),
+            header_value.to_str().unwrap_or("").to_owned(),
+        );
+
+        response_headers.insert(
+            "Access-Control-Allow-Credentials".to_owned(),
+            "true".to_owned(),
+        );
+
+        if let Some(header_value) = request_headers.get("Access-Control-Allow-Headers") {
+            response_headers.insert(
+                "Access-Control-Allow-Headers".to_owned(),
+                header_value.to_str().unwrap_or("").to_owned(),
+            );
+        }
+        if let Some(header_value) = request_headers.get("Access-Control-Allow-Method") {
+            response_headers.insert(
+                "Access-Control-Allow-Methods".to_owned(),
+                header_value.to_str().unwrap_or("").to_owned(),
+            );
+        }
+    }
+
+    for (k, v) in response_headers {
+        if let (Ok(k), Ok(v)) = (HeaderName::from_str(&k), HeaderValue::from_str(&v)) {
+            response.headers_mut().insert(k, v);
+        }
+    }
+
+    return response;
+}
+
 pub fn get_default_response() -> Response<Body> {
     Response::builder().status(404).body(Body::empty()).unwrap()
 }
@@ -165,8 +210,9 @@ pub async fn index(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request<Body>,
 ) -> Response<Body> {
+    let request_headers = request.headers().clone();
     let client_addr: SocketAddr = if let Ok(client_addr) =
-        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, request.headers())
+        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &request_headers)
     {
         client_addr
     } else {
@@ -184,7 +230,7 @@ pub async fn index(
         let url = request.uri().to_string();
 
         match process_route(&ctx, &client_addr, request, &route).await {
-            Ok(response) => return response,
+            Ok(response) => return process_response_headers(&request_headers, response),
             Err(error) => {
                 tokio::spawn(handle_system_error(
                     ctx.pool.clone(),
@@ -196,5 +242,5 @@ pub async fn index(
         }
     };
 
-    get_default_response()
+    process_response_headers(&request_headers, get_default_response())
 }
