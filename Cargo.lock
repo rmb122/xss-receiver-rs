@@ -3048,6 +3048,7 @@ dependencies = [
  "hex",
  "jsonwebtoken",
  "log",
+ "mime_guess",
  "multer",
  "multimap",
  "once_cell",

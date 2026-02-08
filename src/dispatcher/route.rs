@@ -6,14 +6,18 @@ use boa_engine::{Context, JsError, JsValue, Script, Source};
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
-use crate::parsed_request::ParsedRequest;
 use crate::db;
+use crate::parsed_request::ParsedRequest;
+use crate::storage::Storage;
 
 use super::script_engine::register_vars_to_context;
 
 #[async_trait]
 pub trait RouteHandler: Sync + Send {
-    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)>;
+    async fn handle(
+        &self,
+        request: ParsedRequest,
+    ) -> anyhow::Result<(serde_json::Value, Response<Body>)>;
 }
 
 pub struct Route {
@@ -22,23 +26,23 @@ pub struct Route {
     pub(crate) write_log: bool,
 }
 
-impl From<db::route::model::Route> for Route {
-    fn from(value: db::route::model::Route) -> Self {
+impl Route {
+    pub fn transform(value: db::route::model::Route, storage: &Storage) -> anyhow::Result<Self> {
+        // 在转换的时候验证是否是有效的路径, 避免路径穿越
+        let filename = storage.user().get_absolute_path(&value.handler)?;
+
         let handler: Box<dyn RouteHandler> = match value.kind {
-            db::route::model::RouteKind::STATIC => Box::new(StaticHandler::new (
-               value.handler,
-            )),
-            db::route::model::RouteKind::SCRIPT => Box::new(ScriptHandler::new(
-                value.handler,
-              value.timeout,
-            )),
+            db::route::model::RouteKind::STATIC => Box::new(StaticHandler::new(filename)),
+            db::route::model::RouteKind::SCRIPT => {
+                Box::new(ScriptHandler::new(filename, value.timeout))
+            }
         };
 
-        return Route {
+        return Ok(Route {
             pattern: value.pattern,
             handler: handler,
             write_log: value.write_log,
-        }
+        });
     }
 }
 
@@ -56,17 +60,21 @@ impl StaticHandler {
 
 #[async_trait]
 impl RouteHandler for StaticHandler {
-    async fn handle(&self, _: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
-        Ok(
-           ( 
-                serde_json::Value::Null,
-                Response::builder().body(Body::from_stream(ReaderStream::with_capacity(
-                        tokio::fs::File::open(&self.filename).await?,
-                        10240, // 1M
-                    )
-                ))?
-            )
-        )
+    async fn handle(
+        &self,
+        _: ParsedRequest,
+    ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
+        let content_type = mime_guess::from_path(&self.filename).first_or_text_plain();
+
+        Ok((
+            serde_json::Value::Null,
+            Response::builder()
+                .header("Content-Type", content_type.to_string())
+                .body(Body::from_stream(ReaderStream::with_capacity(
+                    tokio::fs::File::open(&self.filename).await?,
+                    10240, // 1M
+                )))?,
+        ))
     }
 }
 
@@ -103,7 +111,10 @@ impl From<JsError> for ScriptError {
 
 #[async_trait]
 impl RouteHandler for ScriptHandler {
-    async fn handle(&self, request: ParsedRequest) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
+    async fn handle(
+        &self,
+        request: ParsedRequest,
+    ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         // 每次运行时重新读取 script
         let script = tokio::fs::read_to_string(&self.filename).await?;
         let timeout = self.timeout.clone();
@@ -131,7 +142,6 @@ impl RouteHandler for ScriptHandler {
                 })
         }).await??;
 
-        
         let mut builder = Response::builder().status(response.status_code);
 
         for (k, vs) in response.headers {

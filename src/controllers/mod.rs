@@ -9,7 +9,7 @@ use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
     db::route::helper::get_all_routes,
-    dispatcher::Dispatcher,
+    dispatcher::{Dispatcher, Route},
     startup_config::StartupConfig,
     storage::Storage,
     utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
@@ -51,6 +51,8 @@ impl Context {
 
         let mut conn = pool.get().await?;
 
+        let storage = Storage::new(&config.storage_path).await?;
+
         Ok(Context {
             startup_config: Arc::new(config.to_owned()),
             pool: pool.clone(),
@@ -60,10 +62,10 @@ impl Context {
                 get_all_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| x.into())
-                    .collect(),
+                    .map(|x| Route::transform(x, &storage))
+                    .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
-            storage: Arc::new(Storage::new(&config.storage_path).await?),
+            storage: Arc::new(storage),
         })
     }
 

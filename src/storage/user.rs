@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
 
+use crate::storage::validate_path_component;
+
 /// UserStorage - 用于给用户保存文件夹
 pub struct UserStorage {
     path: PathBuf,
@@ -10,23 +12,6 @@ pub struct UserStorage {
 impl UserStorage {
     pub(crate) fn new(path: PathBuf) -> Self {
         UserStorage { path }
-    }
-
-    /// 验证路径组件的安全性，防止目录穿越攻击
-    fn validate_path_component(component: &str) -> anyhow::Result<()> {
-        if component.is_empty() {
-            anyhow::bail!("path component cannot be empty");
-        }
-        if component == ".." || component == "." {
-            anyhow::bail!("invalid path component");
-        }
-        if component.contains('/') || component.contains('\\') {
-            anyhow::bail!("path component contains directory traversal");
-        }
-        if component.contains('\0') {
-            anyhow::bail!("path component contains null byte");
-        }
-        Ok(())
     }
 
     /// 递归列出所有目录及其文件
@@ -71,7 +56,7 @@ impl UserStorage {
 
     /// 在根目录下创建新目录
     pub async fn new_directory(&self, directory: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
+        validate_path_component(directory)?;
 
         let path = self.path.join(directory);
 
@@ -85,7 +70,7 @@ impl UserStorage {
 
     /// 删除指定目录
     pub async fn delete_directory(&self, directory: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
+        validate_path_component(directory)?;
 
         let path = self.path.join(directory);
 
@@ -95,13 +80,32 @@ impl UserStorage {
 
     /// 一次性读取文件
     pub async fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
 
         let content = fs::read(path).await?;
         Ok(content)
+    }
+
+    pub fn get_absolute_path(&self, handler: &str) -> anyhow::Result<String> {
+        let parts = handler.split_once("/");
+        let parts = if let Some(parts) = parts {
+            parts
+        } else {
+            anyhow::bail!("invalid handler path: {}", handler)
+        };
+
+        validate_path_component(parts.0)?;
+        validate_path_component(parts.1)?;
+
+        return Ok(self
+            .path
+            .join(parts.0)
+            .join(parts.1)
+            .to_string_lossy()
+            .to_string());
     }
 
     /// 打开目标文件
@@ -111,8 +115,8 @@ impl UserStorage {
         name: &str,
         options: &mut fs::OpenOptions,
     ) -> anyhow::Result<File> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
 
@@ -127,8 +131,8 @@ impl UserStorage {
         name: &str,
         content: &[u8],
     ) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
         // 写入文件
@@ -138,8 +142,8 @@ impl UserStorage {
 
     /// 删除指定文件
     pub async fn delete_file(&self, directory: &str, name: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
 

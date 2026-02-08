@@ -7,7 +7,8 @@ use serde::Deserialize;
 
 use crate::controllers::user::LoggedUser;
 use crate::db::route::helper::{find_route_by_id, get_all_routes_except};
-use crate::dispatcher::Dispatcher;
+use crate::dispatcher::{self, Dispatcher};
+use crate::storage::Storage;
 use crate::{
     Context,
     controllers::AppError,
@@ -66,6 +67,7 @@ pub struct ModifyRequest {
 
 pub async fn compile_routes(
     conn: &mut AsyncPgConnection,
+    storage: &Storage,
     modify: ModifyRequest,
 ) -> anyhow::Result<Dispatcher> {
     let mut routes = match modify.kind {
@@ -106,8 +108,13 @@ pub async fn compile_routes(
         }
     };
 
-    return Dispatcher::new(routes.into_iter().map(|x| x.into()).collect())
-        .map_err(|err| return anyhow::anyhow!("compile new dispatcher failed: {:?}", err));
+    return Dispatcher::new(
+        routes
+            .into_iter()
+            .map(|x| dispatcher::Route::transform(x, storage))
+            .collect::<anyhow::Result<Vec<_>>>()?,
+    )
+    .map_err(|err| return anyhow::anyhow!("compile new dispatcher failed: {:?}", err));
 }
 
 pub fn install_dispatcher(holder: &Arc<RwLock<Dispatcher>>, new: Dispatcher) {
@@ -139,6 +146,7 @@ pub async fn create_route(
     // 3. 替换 dispatcher
     let new_dispatcher = compile_routes(
         &mut conn,
+        &ctx.storage,
         ModifyRequest {
             kind: ModifyKind::NEW,
             route_id: 0,
@@ -168,6 +176,7 @@ pub async fn delete_route(
     // 3. 替换 dispatcher
     let new_dispatcher = compile_routes(
         &mut conn,
+        &ctx.storage,
         ModifyRequest {
             kind: ModifyKind::DELETE,
             route_id: request.route_id,
@@ -225,6 +234,7 @@ pub async fn update_route(
     // 3. 替换 dispatcher
     let new_dispatcher = compile_routes(
         &mut conn,
+        &ctx.storage,
         ModifyRequest {
             kind: ModifyKind::REPLACE,
             route_id: request.route_id,

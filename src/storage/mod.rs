@@ -77,3 +77,20 @@ pub(crate) fn validate_hex_string(id: &str) -> anyhow::Result<&str> {
 
     Ok(id)
 }
+
+/// 验证路径组件的安全性，防止目录穿越攻击
+pub fn validate_path_component(component: &str) -> anyhow::Result<()> {
+    if component.is_empty() {
+        anyhow::bail!("path component cannot be empty");
+    }
+    if component == ".." || component == "." {
+        anyhow::bail!("invalid path component");
+    }
+    if component.contains('/') || component.contains('\\') {
+        anyhow::bail!("path component contains directory traversal");
+    }
+    if component.contains('\0') {
+        anyhow::bail!("path component contains null byte");
+    }
+    Ok(())
+}

@@ -54,9 +54,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    http_log,
-    route,
-    system_log,
-    users,
-);
+diesel::allow_tables_to_appear_in_same_query!(http_log, route, system_log, users,);
