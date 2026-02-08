@@ -33,7 +33,11 @@ pub struct ParsedRequest {
 }
 
 impl ParsedRequest {
-    pub async fn new(client_addr: SocketAddr, request: Request<Body>) -> anyhow::Result<Self> {
+    pub async fn new(
+        client_addr: SocketAddr,
+        request: Request<Body>,
+        max_body_size: i64,
+    ) -> anyhow::Result<Self> {
         let mut parsed_request = ParsedRequest {
             client_addr,
             method: request.method().to_string(),
@@ -61,18 +65,24 @@ impl ParsedRequest {
             parsed_body: ParsedRequestBody::None,
         };
 
-        StreamReader::new(
+        let mut reader = StreamReader::new(
             TryStreamExt::map_err(request.into_body().into_data_stream(), |err| {
                 std::io::Error::other(err)
             })
             .into_stream(),
-        )
-        .read_to_end(&mut parsed_request.body)
-        .await?;
+        );
+
+        if max_body_size >= 0 {
+            reader
+                .take(max_body_size as u64)
+                .read_to_end(&mut parsed_request.body)
+                .await?;
+        } else {
+            reader.read_to_end(&mut parsed_request.body).await?;
+        }
 
         parsed_request.parse_body().await;
 
-        println!("{:?}", parsed_request);
         Ok(parsed_request)
     }
 
@@ -197,7 +207,6 @@ impl ParsedRequest {
                 };
                 let mut content = Vec::new();
 
-                // TODO: 增加上传大小限制
                 while let Ok(Some(chunk)) = field.chunk().await {
                     content.extend(chunk);
                 }

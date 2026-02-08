@@ -24,7 +24,7 @@ mod user;
 
 #[derive(Clone)]
 pub struct Context {
-    startup_config: Arc<StartupConfig>,
+    config: Arc<StartupConfig>,
     pool: bb8::Pool<AsyncPgConnection>,
     jwt_manager: Arc<JwtManager>,
 
@@ -54,7 +54,7 @@ impl Context {
         let storage = Storage::new(&config.storage_path).await?;
 
         Ok(Context {
-            startup_config: Arc::new(config.to_owned()),
+            config: Arc::new(config.to_owned()),
             pool: pool.clone(),
             jwt_manager: Arc::new(jwt_manager),
 
@@ -120,7 +120,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .nest("/file", file_router)
         .split_for_parts();
 
-    let prefix = &context.startup_config.http_server.admin_prefix;
+    let prefix = &context.config.http_server.admin_prefix;
     let prefix = prefix.strip_suffix("/").unwrap_or(prefix);
 
     // 为 OpenAPI 文档添加服务器前缀

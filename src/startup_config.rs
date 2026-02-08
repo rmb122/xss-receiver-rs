@@ -15,6 +15,7 @@ pub struct HttpServer {
     pub jwt_expire_time: i64,
     pub real_addr_header: String,
     pub admin_prefix: String,
+    pub max_body_size: i64,
 }
 
 #[derive(Clone, Deserialize)]

@@ -122,7 +122,12 @@ pub async fn process_route(
     request: Request<Body>,
     route: &Route,
 ) -> anyhow::Result<Response<Body>> {
-    let request = ParsedRequest::new(client_addr.clone(), request).await?;
+    let request = ParsedRequest::new(
+        client_addr.clone(),
+        request,
+        ctx.config.http_server.max_body_size,
+    )
+    .await?;
 
     let mut new_http_log = None;
     if route.write_log {
@@ -163,7 +168,7 @@ pub async fn index(
     request: Request<Body>,
 ) -> Response<Body> {
     let client_addr: SocketAddr = if let Ok(client_addr) =
-        get_real_addr_from_request(&ctx.startup_config.http_server.real_addr_header, &request)
+        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &request)
     {
         client_addr
     } else {
