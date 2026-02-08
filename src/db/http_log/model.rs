@@ -37,6 +37,7 @@ pub struct HttpLog {
     pub id: i32,
     pub client_ip: String,
     pub client_port: i32,
+    pub location: String,
     pub method: String,
     pub path: String,
     #[schema(value_type = serde_json::Object)]
@@ -58,6 +59,7 @@ pub struct HttpLog {
 pub struct NewHttpLog {
     pub client_ip: String,
     pub client_port: i32,
+    pub location: String,
     pub method: String,
     pub path: String,
     pub arg: diesel_json::Json<KeyValues>,

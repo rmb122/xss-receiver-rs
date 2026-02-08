@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
+
 use jsonwebtoken::Algorithm;
 use utoipa::openapi::Server;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -12,7 +13,7 @@ use crate::{
     dispatcher::{Dispatcher, Route},
     startup_config::StartupConfig,
     storage::Storage,
-    utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
+    utils::{ip2region::Locator, jwt::JwtManager, random::get_random_bytes, response::Response},
 };
 
 mod file;
@@ -27,6 +28,7 @@ pub struct Context {
     config: Arc<StartupConfig>,
     pool: bb8::Pool<AsyncPgConnection>,
     jwt_manager: Arc<JwtManager>,
+    locator: Arc<Locator>,
 
     dispatcher: Arc<RwLock<Dispatcher>>,
     storage: Arc<Storage>,
@@ -49,6 +51,20 @@ impl Context {
             config.http_server.jwt_expire_time,
         );
 
+        let locator = Locator::new(
+            if config.ip2region.ipv4_db.is_empty() {
+                None
+            } else {
+                Some(config.ip2region.ipv4_db.clone())
+            },
+            if config.ip2region.ipv6_db.is_empty() {
+                None
+            } else {
+                Some(config.ip2region.ipv6_db.clone())
+            },
+            crate::utils::ip2region::CachePolicy::VectorIndex,
+        )?;
+
         let mut conn = pool.get().await?;
 
         let storage = Storage::new(&config.storage_path).await?;
@@ -57,6 +73,7 @@ impl Context {
             config: Arc::new(config.to_owned()),
             pool: pool.clone(),
             jwt_manager: Arc::new(jwt_manager),
+            locator: Arc::new(locator),
 
             dispatcher: Arc::new(RwLock::new(Dispatcher::new(
                 get_all_routes(&mut conn)

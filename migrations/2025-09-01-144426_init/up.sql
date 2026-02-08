@@ -11,6 +11,7 @@ CREATE TABLE http_log (
 	id serial4 NOT NULL,
 	client_ip varchar(45) NOT NULL,
 	client_port int4 NOT NULL,
+	location varchar NOT NULL,
 	"method" varchar(255) NOT NULL,
 	"path" varchar NOT NULL,
 	arg jsonb NOT NULL,

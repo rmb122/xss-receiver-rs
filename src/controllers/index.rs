@@ -18,8 +18,7 @@ use crate::{
         system_log::helper::insert_system_log,
     },
     storage::Storage,
-    utils::diesel_json,
-    utils::parsed_request::ParsedRequestBody,
+    utils::{diesel_json, ip2region::Locator, parsed_request::ParsedRequestBody},
 };
 use crate::{
     dispatcher::Route,
@@ -53,6 +52,7 @@ pub async fn handle_system_error(
 
 pub async fn get_http_log_from_request(
     request: &ParsedRequest,
+    locator: &Locator,
     storage: &Storage,
 ) -> anyhow::Result<NewHttpLog> {
     let (body_type, body, file) = match &request.parsed_body {
@@ -86,6 +86,7 @@ pub async fn get_http_log_from_request(
     Ok(NewHttpLog {
         client_ip: request.client_addr.ip().to_string(),
         client_port: request.client_addr.port() as i32,
+        location: locator.locate(&request.client_addr.ip().to_string()),
         method: request.method.clone(),
         path: request.path.clone(),
         arg: diesel_json::Json(request.params.clone()),
@@ -128,7 +129,7 @@ pub async fn process_route(
 
     let mut new_http_log = None;
     if route.write_log {
-        new_http_log = Some(get_http_log_from_request(&request, &ctx.storage).await?);
+        new_http_log = Some(get_http_log_from_request(&request, &ctx.locator, &ctx.storage).await?);
     }
 
     let result = route.handler.handle(request).await;

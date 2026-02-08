@@ -4,8 +4,16 @@ use serde::Deserialize;
 pub struct StartupConfig {
     pub db_url: String,
     pub storage_path: String,
+
+    pub ip2region: Ip2Region,
     pub http_server: HttpServer,
     pub dns_server: DnsServer,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct Ip2Region {
+    pub ipv4_db: String,
+    pub ipv6_db: String,
 }
 
 #[derive(Clone, Deserialize)]

@@ -1,6 +1,10 @@
 db_url = "postgres://postgres:postgres@10.255.0.2/postgres"
 storage_path = "/tmp/"
 
+[ip2region]
+ipv4_db = "/home/rmb122/downloads/ip2region_v4.xdb"
+ipv6_db = ""
+
 [http_server]
 listen = "0.0.0.0:8000"
 jwt_secret = "TEST_VALUE"     # empty means random value

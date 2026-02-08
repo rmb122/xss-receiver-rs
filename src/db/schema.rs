@@ -6,6 +6,7 @@ diesel::table! {
         #[max_length = 45]
         client_ip -> Varchar,
         client_port -> Int4,
+        location -> Varchar,
         #[max_length = 255]
         method -> Varchar,
         path -> Varchar,
@@ -54,4 +55,9 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(http_log, route, system_log, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    http_log,
+    route,
+    system_log,
+    users,
+);
