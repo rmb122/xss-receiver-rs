@@ -1,120 +1,85 @@
-use std::path::PathBuf;
-use tokio::fs::{self, File};
+mod log;
+mod temp;
+mod user;
 
+pub use log::LogStorage;
+pub use temp::TempStorage;
+pub use user::UserStorage;
+
+use std::path::PathBuf;
+use tokio::fs;
+
+/// Storage 主类，管理三种不同类型的存储
 pub struct Storage {
-    path: String,
+    base_path: PathBuf,
+    user: UserStorage,
+    log: LogStorage,
+    temp: TempStorage,
 }
 
 impl Storage {
-    pub fn new(path: String) -> Self {
-        return Storage { path };
-    }
+    /// 创建 Storage 实例，会自动创建 user/log/temp 三个子目录
+    pub async fn new(path: String) -> anyhow::Result<Self> {
+        let base_path = PathBuf::from(&path);
 
-    /// 验证路径组件的安全性，防止目录穿越攻击
-    fn validate_path_component(component: &str) -> anyhow::Result<()> {
-        if component.is_empty() {
-            anyhow::bail!("path component cannot be empty");
-        }
-        if component == ".." || component == "." {
-            anyhow::bail!("invalid path component");
-        }
-        if component.contains('/') || component.contains('\\') {
-            anyhow::bail!("path component contains directory traversal");
-        }
-        if component.contains('\0') {
-            anyhow::bail!("path component contains null byte");
-        }
-        Ok(())
-    }
+        // 确保基础路径存在
+        fs::create_dir_all(&base_path).await?;
 
-    /// 列出根目录下的所有直接子目录（不递归）
-    pub async fn list_directory(&self) -> anyhow::Result<Vec<String>> {
-        let mut directories = Vec::new();
-        let mut entries = fs::read_dir(&self.path).await?;
+        // 创建三个子目录
+        let user_path = base_path.join("user");
+        let log_path = base_path.join("log");
+        let temp_path = base_path.join("temp");
 
-        while let Some(entry) = entries.next_entry().await? {
-            let file_type = entry.file_type().await?;
-            if file_type.is_dir() {
-                if let Some(name) = entry.file_name().to_str() {
-                    directories.push(name.to_string());
-                }
+        // 创建目录，如果已存在则忽略错误
+        for dir_path in [&user_path, &log_path, &temp_path] {
+            match fs::create_dir(dir_path).await {
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e.into()),
             }
         }
 
-        Ok(directories)
+        // 创建三个 Storage 实例
+        let user = UserStorage::new(user_path);
+        let log = LogStorage::new(log_path);
+        let temp = TempStorage::new(temp_path);
+
+        Ok(Storage {
+            base_path,
+            user,
+            log,
+            temp,
+        })
     }
 
-    /// 在根目录下创建新目录
-    pub async fn new_directory(&self, name: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(name)?;
+    /// 获取 UserStorage 实例
+    pub fn user(&self) -> &UserStorage {
+        &self.user
+    }
 
-        let path = PathBuf::from(&self.path).join(name);
+    /// 获取 LogStorage 实例
+    pub fn log(&self) -> &LogStorage {
+        &self.log
+    }
 
-        // 如果目录已存在不报错
-        match fs::create_dir(&path).await {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-            Err(e) => Err(e.into()),
+    /// 获取 TempStorage 实例
+    pub fn temp(&self) -> &TempStorage {
+        &self.temp
+    }
+}
+
+pub(crate) fn validate_hex_string(id: &str) -> anyhow::Result<&str> {
+    // 验证长度必须为 40
+    if id.len() != 40 {
+        anyhow::bail!("invalid id format");
+    }
+
+    // 验证每个字符都是 hex 字符（0-9, a-f, A-F）
+    for c in id.chars() {
+        if !c.is_ascii_hexdigit() {
+            anyhow::bail!("invalid id format");
         }
     }
 
-    /// 删除指定目录
-    pub async fn delete_directory(&self, directory: &str, name: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
-
-        let path = PathBuf::from(&self.path).join(directory).join(name);
-
-        fs::remove_dir_all(&path).await?;
-        Ok(())
-    }
-
-    /// 一次性读取文件
-    pub async fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
-
-        let path = PathBuf::from(&self.path).join(directory).join(name);
-
-        let content = fs::read(path).await?;
-        Ok(content)
-    }
-
-    /// 流式读取文件
-    pub async fn open_file(&self, directory: &str, name: &str) -> anyhow::Result<File> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
-
-        let path = PathBuf::from(&self.path).join(directory).join(name);
-
-        let content = fs::OpenOptions::new().read(true).open(path).await?;
-        Ok(content)
-    }
-
-    /// 写入文件，如果目录不存在则自动创建
-    pub async fn write_file(
-        &self,
-        directory: &str,
-        name: &str,
-        content: &[u8],
-    ) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
-
-        let path = PathBuf::from(&self.path).join(directory).join(name);
-        // 写入文件
-        fs::write(&path, content).await?;
-        Ok(())
-    }
-
-    /// 删除指定文件
-    pub async fn delete_file(&self, directory: &str, name: &str) -> anyhow::Result<()> {
-        Self::validate_path_component(directory)?;
-        Self::validate_path_component(name)?;
-
-        let path = PathBuf::from(&self.path).join(directory).join(name);
-
-        fs::remove_file(&path).await?;
-        Ok(())
-    }
+    Ok(id)
 }
