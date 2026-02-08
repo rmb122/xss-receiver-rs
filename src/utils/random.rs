@@ -1,4 +1,7 @@
-use rand::{Rng, distr::Alphanumeric};
+use rand::{
+    Rng,
+    distr::{Alphanumeric, StandardUniform},
+};
 
 pub fn get_random_string(length: usize) -> String {
     return rand::rng()
@@ -10,7 +13,7 @@ pub fn get_random_string(length: usize) -> String {
 
 pub fn get_random_bytes(length: usize) -> Vec<u8> {
     return rand::rng()
-        .sample_iter(&Alphanumeric)
+        .sample_iter(&StandardUniform)
         .take(length)
         .collect();
 }

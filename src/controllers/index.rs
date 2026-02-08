@@ -18,7 +18,8 @@ use crate::{
         system_log::helper::insert_system_log,
     },
     parsed_request::ParsedRequestBody,
-    utils::{diesel_json, upload},
+    storage::Storage,
+    utils::diesel_json,
 };
 use crate::{
     dispatcher::Route,
@@ -50,9 +51,9 @@ pub async fn handle_system_error(
     }
 }
 
-pub fn get_http_log_from_request(
+pub async fn get_http_log_from_request(
     request: &ParsedRequest,
-    upload_dir: &str,
+    storage: &Storage,
 ) -> anyhow::Result<NewHttpLog> {
     let (body_type, body, file) = match &request.parsed_body {
         ParsedRequestBody::None => (
@@ -65,10 +66,7 @@ pub fn get_http_log_from_request(
             for i in file.iter() {
                 persisted_upload_file.insert(
                     i.0.clone(),
-                    (
-                        i.1.0.clone(),
-                        upload::persist_upload_file(&i.1.1, upload_dir)?,
-                    ),
+                    (i.1.0.clone(), storage.log().save(&i.1.1).await?),
                 );
             }
 
@@ -128,10 +126,7 @@ pub async fn process_route(
 
     let mut new_http_log = None;
     if route.write_log {
-        new_http_log = Some(get_http_log_from_request(
-            &request,
-            &ctx.startup_config.storage_path,
-        )?);
+        new_http_log = Some(get_http_log_from_request(&request, &ctx.storage).await?);
     }
 
     let result = route.handler.handle(request).await;

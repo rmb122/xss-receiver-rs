@@ -11,6 +11,7 @@ use crate::{
     db::route::helper::get_all_routes,
     dispatcher::Dispatcher,
     startup_config::StartupConfig,
+    storage::Storage,
     utils::{jwt::JwtManager, random::get_random_bytes, response::Response},
 };
 
@@ -24,8 +25,10 @@ mod user;
 pub struct Context {
     startup_config: Arc<StartupConfig>,
     pool: bb8::Pool<AsyncPgConnection>,
-    dispatcher: Arc<RwLock<Dispatcher>>,
     jwt_manager: Arc<JwtManager>,
+
+    dispatcher: Arc<RwLock<Dispatcher>>,
+    storage: Arc<Storage>,
 }
 
 impl Context {
@@ -50,6 +53,8 @@ impl Context {
         Ok(Context {
             startup_config: Arc::new(config.to_owned()),
             pool: pool.clone(),
+            jwt_manager: Arc::new(jwt_manager),
+
             dispatcher: Arc::new(RwLock::new(Dispatcher::new(
                 get_all_routes(&mut conn)
                     .await?
@@ -57,7 +62,7 @@ impl Context {
                     .map(|x| x.into())
                     .collect(),
             )?)),
-            jwt_manager: Arc::new(jwt_manager),
+            storage: Arc::new(Storage::new(&config.storage_path).await?),
         })
     }
 

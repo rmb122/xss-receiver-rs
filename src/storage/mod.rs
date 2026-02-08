@@ -19,8 +19,8 @@ pub struct Storage {
 
 impl Storage {
     /// 创建 Storage 实例，会自动创建 user/log/temp 三个子目录
-    pub async fn new(path: String) -> anyhow::Result<Self> {
-        let base_path = PathBuf::from(&path);
+    pub async fn new(path: &str) -> anyhow::Result<Self> {
+        let base_path = PathBuf::from(path);
 
         // 确保基础路径存在
         fs::create_dir_all(&base_path).await?;

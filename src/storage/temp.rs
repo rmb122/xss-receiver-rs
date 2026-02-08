@@ -1,9 +1,9 @@
-use rand::Rng;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 
 use crate::storage::validate_hex_string;
+use crate::utils::random::get_random_bytes;
 
 /// TempStorage - 用于分片上传文件，最终 merge 成一个完整的文件
 pub struct TempStorage {
@@ -17,10 +17,7 @@ impl TempStorage {
 
     /// 生成随机的 40 长度 hex id (20 字节)
     fn generate_id() -> String {
-        let mut rng = rand::rng();
-        let mut random_bytes = [0u8; 20];
-        rng.fill(&mut random_bytes);
-        hex::encode(random_bytes)
+        hex::encode(get_random_bytes(20))
     }
 
     /// 保存内容并返回随机生成的 id（文件名）
