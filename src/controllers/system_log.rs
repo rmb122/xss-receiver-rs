@@ -54,12 +54,12 @@ pub async fn get_system_logs(
     let (logs, total) =
         get_system_logs_paginated(&mut conn, request.page, request.page_size).await?;
 
-    Ok(Response::<PaginatedSystemLogResponse>::ok()
-        .msg("system logs retrieved successfully")
-        .payload(PaginatedSystemLogResponse {
+    Ok(
+        Response::<PaginatedSystemLogResponse>::ok().payload(PaginatedSystemLogResponse {
             data: logs,
             total,
             page: request.page,
             page_size: request.page_size,
-        }))
+        }),
+    )
 }

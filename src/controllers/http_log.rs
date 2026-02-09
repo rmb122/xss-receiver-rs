@@ -53,12 +53,12 @@ pub async fn get_http_logs(
     let mut conn = ctx.db_conn().await?;
     let (logs, total) = get_http_logs_paginated(&mut conn, request.page, request.page_size).await?;
 
-    Ok(Response::<PaginatedHttpLogResponse>::ok()
-        .msg("http logs retrieved successfully")
-        .payload(PaginatedHttpLogResponse {
+    Ok(
+        Response::<PaginatedHttpLogResponse>::ok().payload(PaginatedHttpLogResponse {
             data: logs,
             total,
             page: request.page,
             page_size: request.page_size,
-        }))
+        }),
+    )
 }

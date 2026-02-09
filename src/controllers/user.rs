@@ -65,12 +65,12 @@ pub async fn login(
             )
             .await;
 
-            return Ok(Response::<String>::ok().msg("login success").payload(
-                ctx.jwt_manager.encode_token(LoggedUser {
+            return Ok(
+                Response::<String>::ok().payload(ctx.jwt_manager.encode_token(LoggedUser {
                     id: user.id,
                     username: user.username,
-                })?,
-            ));
+                })?),
+            );
         }
     }
     return Err(anyhow::anyhow!("username or password error").into());
@@ -140,9 +140,7 @@ pub async fn create_user(
     let mut conn = ctx.db_conn().await?;
     let new_user = db_create_user(&mut conn, &request.username, &request.password).await?;
 
-    Ok(Response::<UserResponse>::ok()
-        .msg("user created successfully")
-        .payload(new_user.into()))
+    Ok(Response::<UserResponse>::ok().payload(new_user.into()))
 }
 
 // 删除用户 (仅管理员)
@@ -158,9 +156,7 @@ pub async fn delete_user(
     let deleted = db_delete_user(&mut conn, request.user_id).await?;
 
     if deleted {
-        Ok(Response::<bool>::ok()
-            .msg("user deleted successfully")
-            .payload(true))
+        Ok(Response::<bool>::ok().payload(true))
     } else {
         Err(anyhow::anyhow!("user not found").into())
     }
@@ -178,9 +174,7 @@ pub async fn get_users(
     let users = get_all_users(&mut conn).await?;
     let user_responses: Vec<UserResponse> = users.into_iter().map(|u| u.into()).collect();
 
-    Ok(Response::<Vec<UserResponse>>::ok()
-        .msg("users retrieved successfully")
-        .payload(user_responses))
+    Ok(Response::<Vec<UserResponse>>::ok().payload(user_responses))
 }
 
 // 更新用户, 管理员可以修改任意用户, 其他人只能修改自己的
@@ -209,7 +203,5 @@ pub async fn update_user(
     )
     .await?;
 
-    Ok(Response::<UserResponse>::ok()
-        .msg("user updated successfully")
-        .payload(updated_user.into()))
+    Ok(Response::<UserResponse>::ok().payload(updated_user.into()))
 }

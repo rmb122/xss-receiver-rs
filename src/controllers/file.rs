@@ -96,9 +96,7 @@ pub async fn create_directory(
     Path(directory): Path<String>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().new_directory(&directory).await?;
-    Ok(Response::ok()
-        .msg("directory created successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 /// 删除用户目录
@@ -115,9 +113,7 @@ pub async fn delete_directory(
     Path(directory): Path<String>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().delete_directory(&directory).await?;
-    Ok(Response::ok()
-        .msg("directory deleted successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 /// 重命名用户目录
@@ -139,9 +135,7 @@ pub async fn rename_directory(
         .rename_directory(&directory, &request.new_name)
         .await?;
 
-    Ok(Response::ok()
-        .msg("directory renamed successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 // ==================== 目录文件操作 ====================
@@ -193,9 +187,7 @@ pub async fn upload_file(
         .write_file(&directory, &file, &content)
         .await?;
 
-    Ok(Response::ok()
-        .msg("file uploaded successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 /// 下载文件
@@ -235,9 +227,7 @@ pub async fn delete_file(
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().delete_file(&directory, &file).await?;
 
-    Ok(Response::ok()
-        .msg("file deleted successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 /// 重命名文件
@@ -259,9 +249,7 @@ pub async fn rename_file(
         .rename_file(&directory, &file, &request.new_name)
         .await?;
 
-    Ok(Response::ok()
-        .msg("file renamed successfully")
-        .payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 // ==================== 分片上传操作 ====================
@@ -292,9 +280,7 @@ pub async fn upload_part(
 
     let chunk_id = ctx.storage.temp().save(&content).await?;
 
-    Ok(Response::ok()
-        .msg("chunk uploaded successfully")
-        .payload(PartUploadResponse { chunk_id }))
+    Ok(Response::ok().payload(PartUploadResponse { chunk_id }))
 }
 
 /// 合并分片上传的文件到用户目录
@@ -329,7 +315,7 @@ pub async fn merge_parts(
         .merge(&request.chunk_ids, target_file)
         .await?;
 
-    Ok(Response::ok().msg("file merged successfully").payload(true))
+    Ok(Response::ok().payload(true))
 }
 
 // ==================== 日志文件操作 ====================

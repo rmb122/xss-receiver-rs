@@ -60,12 +60,9 @@ impl UserStorage {
 
         let path = self.path.join(directory);
 
-        // 如果目录已存在不报错
-        match fs::create_dir(&path).await {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        // 如果目录已存在，返回错误
+        fs::create_dir(&path).await?;
+        Ok(())
     }
 
     /// 删除指定目录
@@ -136,7 +133,7 @@ impl UserStorage {
         Ok(content)
     }
 
-    /// 写入文件，如果目录不存在则自动创建
+    /// 写入文件
     pub async fn write_file(
         &self,
         directory: &str,

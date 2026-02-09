@@ -157,9 +157,7 @@ pub async fn create_route(
     let route = db_create_route(&mut conn, &new_route).await?;
     install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
-    Ok(Response::<Route>::ok()
-        .msg("route created successfully")
-        .payload(route))
+    Ok(Response::<Route>::ok().payload(route))
 }
 
 // 删除路由
@@ -188,9 +186,7 @@ pub async fn delete_route(
     install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
     if deleted {
-        Ok(Response::<bool>::ok()
-            .msg("route deleted successfully")
-            .payload(true))
+        Ok(Response::<bool>::ok().payload(true))
     } else {
         Err(anyhow::anyhow!("route not found").into())
     }
@@ -205,9 +201,7 @@ pub async fn get_routes(
     let mut conn = ctx.db_conn().await?;
     let routes = get_all_routes(&mut conn).await?;
 
-    Ok(Response::<Vec<Route>>::ok()
-        .msg("routes retrieved successfully")
-        .payload(routes))
+    Ok(Response::<Vec<Route>>::ok().payload(routes))
 }
 
 // 更新路由
@@ -245,7 +239,5 @@ pub async fn update_route(
     let route = db_update_route(&mut conn, request.route_id, &updated_route).await?;
     install_dispatcher(&ctx.dispatcher, new_dispatcher);
 
-    Ok(Response::<Route>::ok()
-        .msg("route updated successfully")
-        .payload(route))
+    Ok(Response::<Route>::ok().payload(route))
 }
