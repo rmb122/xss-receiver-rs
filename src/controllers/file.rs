@@ -195,21 +195,33 @@ pub async fn upload_file(
     get,
     path = "/user/{directory}/{file}",
     responses(
-        (status = OK, body = Vec<u8>)
+        (status = 200, description = "文件内容", body = Vec<u8>),
+        (status = 404, description = "文件不存在")
     ),
 )]
 pub async fn download_file(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
     Path((directory, file)): Path<(String, String)>,
-) -> Result<impl IntoResponse, AppError> {
+) -> impl IntoResponse {
+    // 尝试打开文件
     let file_handle = ctx
         .storage
         .user()
         .open_file(&directory, &file, fs::OpenOptions::new().read(true))
-        .await?;
+        .await;
 
-    Ok(make_file_response(file_handle, &file))
+    // 处理结果
+    match file_handle {
+        Ok(file_obj) => {
+            // 文件存在，返回文件流
+            make_file_response(file_obj, &file).into_response()
+        }
+        Err(_) => {
+            // 文件不存在或读取失败，返回 404
+            StatusCode::NOT_FOUND.into_response()
+        }
+    }
 }
 
 /// 删除文件
@@ -325,19 +337,31 @@ pub async fn merge_parts(
     get,
     path = "/log/{file}",
     responses(
-        (status = OK, body = Vec<u8>)
+        (status = 200, description = "日志文件内容", body = Vec<u8>),
+        (status = 404, description = "文件不存在")
     ),
 )]
 pub async fn download_log_file(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
     Path(file): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+) -> impl IntoResponse {
+    // 尝试打开日志文件
     let file_handle = ctx
         .storage
         .log()
         .open(&file, fs::OpenOptions::new().read(true))
-        .await?;
+        .await;
 
-    Ok(make_file_response(file_handle, &file))
+    // 处理结果
+    match file_handle {
+        Ok(file_obj) => {
+            // 文件存在，返回文件流
+            make_file_response(file_obj, &file).into_response()
+        }
+        Err(_) => {
+            // 文件不存在或读取失败，返回 404
+            StatusCode::NOT_FOUND.into_response()
+        }
+    }
 }

@@ -150,7 +150,7 @@ pub async fn create_route(
         ModifyRequest {
             kind: ModifyKind::NEW,
             route_id: 0,
-            route: None,
+            route: Some(new_route.clone()),
         },
     )
     .await?;

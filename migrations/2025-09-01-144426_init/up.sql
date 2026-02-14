@@ -46,7 +46,7 @@ CREATE TABLE route (
 	"handler" varchar NOT NULL,
 	write_log bool NOT NULL,
 	"comment" text NOT NULL,
-	create_time timestamp NOT NULL,
+	create_time timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT route_pk PRIMARY KEY (id)
 );
 CREATE INDEX route_create_time_idx ON route (create_time);
