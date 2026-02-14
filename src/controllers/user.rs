@@ -3,7 +3,8 @@ use std::net::SocketAddr;
 use axum::{
     Json,
     extract::{ConnectInfo, State},
-    http::HeaderMap,
+    http::{HeaderMap, header},
+    response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,13 +36,13 @@ pub struct LoginRequest {
     password: String,
 }
 
-#[utoipa::path(post, path = "/login", responses((status = OK, body = Response<String>)))]
+#[utoipa::path(post, path = "/login", responses((status = OK, body = Response<bool>)))]
 pub async fn login(
     State(ctx): State<Context>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(request): Json<LoginRequest>,
-) -> Result<Response<String>, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     let mut conn = ctx.db_conn().await?;
     let user: Option<User> = find_user_by_username(&mut conn, &request.username).await?;
 
@@ -65,12 +66,26 @@ pub async fn login(
             )
             .await;
 
-            return Ok(
-                Response::<String>::ok().payload(ctx.jwt_manager.encode_token(LoggedUser {
-                    id: user.id,
-                    username: user.username,
-                })?),
+            // 生成 JWT token
+            let token = ctx.jwt_manager.encode_token(LoggedUser {
+                id: user.id,
+                username: user.username,
+            })?;
+
+            // 创建响应头，设置 Authorization Cookie
+            let mut response_headers = HeaderMap::new();
+            response_headers.insert(
+                header::SET_COOKIE,
+                format!(
+                    "{}={}; Path={}; HttpOnly",
+                    header::AUTHORIZATION,
+                    token,
+                    ctx.config.http_server.admin_prefix
+                )
+                .parse()?,
             );
+
+            return Ok((response_headers, Response::<()>::ok().payload(())));
         }
     }
     return Err(anyhow::anyhow!("username or password error").into());
