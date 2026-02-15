@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::controllers::user::LoggedUser;
 use crate::db::route::helper::{find_route_by_id, get_all_routes_except};
+use crate::db::route::model::PatternKind;
 use crate::dispatcher::{self, Dispatcher};
 use crate::storage::Storage;
 use crate::{
@@ -17,7 +18,7 @@ use crate::{
             create_route as db_create_route, delete_route as db_delete_route, get_all_routes,
             update_route as db_update_route,
         },
-        model::{NewRoute, Route, RouteKind},
+        model::{HandlerKind, NewRoute, Route},
     },
     utils::{jwt::Claims, response::Response},
 };
@@ -25,10 +26,11 @@ use crate::{
 // 创建路由请求
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateRouteRequest {
-    kind: RouteKind,
+    pattern_kind: PatternKind,
     pattern: String,
     timeout: i32,
     catalog: String,
+    handler_kind: HandlerKind,
     handler: String,
     write_log: bool,
     comment: String,
@@ -44,10 +46,11 @@ pub struct DeleteRouteRequest {
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct UpdateRouteRequest {
     route_id: i32,
-    kind: RouteKind,
+    pattern_kind: PatternKind,
     pattern: String,
     timeout: i32,
     catalog: String,
+    handler_kind: HandlerKind,
     handler: String,
     write_log: bool,
     comment: String,
@@ -93,10 +96,11 @@ pub async fn compile_routes(
 
             let new_route = Route {
                 id: modify.route_id,
-                kind: new_route.kind.clone(),
+                pattern_kind: new_route.pattern_kind,
                 pattern: new_route.pattern.clone(),
                 timeout: new_route.timeout,
                 catalog: new_route.catalog.clone(),
+                handler_kind: new_route.handler_kind,
                 handler: new_route.handler.clone(),
                 write_log: new_route.write_log,
                 comment: new_route.comment.clone(),
@@ -130,10 +134,11 @@ pub async fn create_route(
     Json(request): Json<CreateRouteRequest>,
 ) -> Result<Response<Route>, AppError> {
     let new_route = NewRoute {
-        kind: request.kind,
-        pattern: request.pattern,
+        pattern_kind: request.pattern_kind,
+        pattern: request.pattern.clone(),
         timeout: request.timeout,
-        catalog: request.catalog,
+        catalog: request.catalog.clone(),
+        handler_kind: request.handler_kind,
         handler: request.handler,
         write_log: request.write_log,
         comment: request.comment,
@@ -212,10 +217,11 @@ pub async fn update_route(
     Json(request): Json<UpdateRouteRequest>,
 ) -> Result<Response<Route>, AppError> {
     let updated_route = NewRoute {
-        kind: request.kind,
+        pattern_kind: request.pattern_kind,
         pattern: request.pattern,
         timeout: request.timeout,
         catalog: request.catalog,
+        handler_kind: request.handler_kind,
         handler: request.handler,
         write_log: request.write_log,
         comment: request.comment,

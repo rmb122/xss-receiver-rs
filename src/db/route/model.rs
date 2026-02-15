@@ -22,7 +22,29 @@ use crate::db::EnumNotFoundError;
 #[diesel_enum(error_fn = EnumNotFoundError::not_found)]
 #[diesel_enum(error_type = EnumNotFoundError)]
 #[serde(rename_all = "UPPERCASE")]
-pub enum RouteKind {
+pub enum PatternKind {
+    PLAIN,
+    REGEX,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    FromSqlRow,
+    DbEnum,
+    AsExpression,
+    Serialize,
+    Deserialize,
+    utoipa::ToSchema,
+)]
+#[diesel(sql_type = SmallInt)]
+#[diesel_enum(error_fn = EnumNotFoundError::not_found)]
+#[diesel_enum(error_type = EnumNotFoundError)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum HandlerKind {
     STATIC,
     SCRIPT,
 }
@@ -32,10 +54,11 @@ pub enum RouteKind {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Route {
     pub id: i32,
-    pub kind: RouteKind,
+    pub pattern_kind: PatternKind,
     pub pattern: String,
     pub timeout: i32,
     pub catalog: String,
+    pub handler_kind: HandlerKind,
     pub handler: String,
     pub write_log: bool,
     pub comment: String,
@@ -46,10 +69,11 @@ pub struct Route {
 #[diesel(table_name = crate::db::schema::route)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NewRoute {
-    pub kind: RouteKind,
+    pub pattern_kind: PatternKind,
     pub pattern: String,
     pub timeout: i32,
     pub catalog: String,
+    pub handler_kind: HandlerKind,
     pub handler: String,
     pub write_log: bool,
     pub comment: String,

@@ -4,7 +4,7 @@ mod user;
 
 pub use log::LogStorage;
 pub use temp::TempStorage;
-pub use user::UserStorage;
+pub use user::{FileInfo, UserStorage};
 
 use std::path::PathBuf;
 use tokio::fs;

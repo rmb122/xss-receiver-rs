@@ -31,15 +31,24 @@ impl Route {
         // 在转换的时候验证是否是有效的路径, 避免路径穿越
         let filename = storage.user().get_absolute_path(&value.handler)?;
 
-        let handler: Box<dyn RouteHandler> = match value.kind {
-            db::route::model::RouteKind::STATIC => Box::new(StaticHandler::new(filename)),
-            db::route::model::RouteKind::SCRIPT => {
+        let pattern = match value.pattern_kind {
+            db::route::model::PatternKind::PLAIN => {
+                format!("^{}$", regex::escape(&value.pattern))
+            }
+            db::route::model::PatternKind::REGEX => {
+                value.pattern.clone()
+            }
+        };
+
+        let handler: Box<dyn RouteHandler> = match value.handler_kind {
+            db::route::model::HandlerKind::STATIC => Box::new(StaticHandler::new(filename)),
+            db::route::model::HandlerKind::SCRIPT => {
                 Box::new(ScriptHandler::new(filename, value.timeout))
             }
         };
 
         return Ok(Route {
-            pattern: value.pattern,
+            pattern: pattern,
             handler: handler,
             write_log: value.write_log,
         });

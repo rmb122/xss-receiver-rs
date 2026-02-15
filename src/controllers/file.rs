@@ -13,16 +13,17 @@ use tokio_util::io::ReaderStream;
 use crate::{
     controllers::user::LoggedUser,
     controllers::{AppError, Context},
+    storage::FileInfo,
     utils::{jwt::Claims, response::Response},
 };
 
 // ==================== 请求/响应结构体 ====================
 
 /// 目录及其文件的映射响应
-pub type DirectoryMapResponse = HashMap<String, Vec<String>>;
+pub type DirectoryMapResponse = HashMap<String, Vec<FileInfo>>;
 
 /// 文件列表响应
-pub type FileListResponse = Vec<String>;
+pub type FileListResponse = Vec<FileInfo>;
 
 /// 分片上传响应
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]

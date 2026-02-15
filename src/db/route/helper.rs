@@ -75,10 +75,11 @@ pub async fn update_route(
 
     let route = diesel::update(route::table.filter(route::id.eq(route_id)))
         .set((
-            route::kind.eq(&updated_route.kind),
+            route::pattern_kind.eq(&updated_route.pattern_kind),
             route::pattern.eq(&updated_route.pattern),
             route::timeout.eq(updated_route.timeout),
             route::catalog.eq(&updated_route.catalog),
+            route::handler_kind.eq(&updated_route.handler_kind),
             route::handler.eq(&updated_route.handler),
             route::write_log.eq(updated_route.write_log),
             route::comment.eq(&updated_route.comment),

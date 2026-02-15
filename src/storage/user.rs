@@ -1,8 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
+use serde::{Deserialize, Serialize};
 use tokio::fs::{self, File};
 
 use crate::storage::validate_path_component;
+
+/// 文件信息
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FileInfo {
+    /// 文件名
+    pub name: String,
+    /// 文件大小（字节）
+    pub size: u64,
+    /// 最后修改时间（Unix 时间戳，秒）
+    pub modified_time: i64,
+}
 
 /// UserStorage - 用于给用户保存文件夹
 pub struct UserStorage {
@@ -15,7 +28,7 @@ impl UserStorage {
     }
 
     /// 递归列出所有目录及其文件
-    pub async fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<String>>> {
+    pub async fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
         let mut result = HashMap::new();
         let mut entries = fs::read_dir(&self.path).await?;
 
@@ -36,7 +49,7 @@ impl UserStorage {
     }
 
     /// 列出指定目录下文件
-    pub async fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<String>> {
+    pub async fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
         let mut files = Vec::new();
 
         let path = self.path.join(directory);
@@ -46,7 +59,19 @@ impl UserStorage {
             let file_type = entry.file_type().await?;
             if file_type.is_file() {
                 if let Some(name) = entry.file_name().to_str() {
-                    files.push(name.to_string());
+                    // 获取文件元数据
+                    let metadata = entry.metadata().await?;
+                    let size = metadata.len();
+                    let modified_time = metadata
+                        .modified()?
+                        .duration_since(UNIX_EPOCH)?
+                        .as_secs() as i64;
+                    
+                    files.push(FileInfo {
+                        name: name.to_string(),
+                        size,
+                        modified_time,
+                    });
                 }
             }
         }
