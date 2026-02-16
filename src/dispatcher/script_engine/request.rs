@@ -175,21 +175,30 @@ pub fn register_request_to_context(context: &mut Context, request: &ParsedReques
     let params_obj =
         create_multimap_object(context, &request.params).expect("failed to create params object");
 
-    // 处理 parsed_body
-    let json_value = if let ParsedRequestBody::Json(json_value) = &request.parsed_body {
-        json_value_to_js_value(json_value, context).ok()
-    } else {
-        None
+    // 处理 parsed_body — 始终创建 json, form, files 属性
+    let empty_form = MultiMap::new();
+    let empty_files = MultiMap::new();
+
+    let (json_value, form_data, files_data) = match &request.parsed_body {
+        ParsedRequestBody::Json(json_value) => (
+            json_value_to_js_value(json_value, context).expect("failed to create json value"),
+            &empty_form,
+            &empty_files,
+        ),
+        ParsedRequestBody::Form(form, files) => {
+            (JsValue::from(JsObject::with_null_proto()), form, files)
+        }
+        ParsedRequestBody::None => (
+            JsValue::from(JsObject::with_null_proto()),
+            &empty_form,
+            &empty_files,
+        ),
     };
 
-    let (form_obj, files_obj) = if let ParsedRequestBody::Form(form, files) = &request.parsed_body {
-        (
-            create_multimap_object(context, form).ok(),
-            create_upload_files_object(context, files).ok(),
-        )
-    } else {
-        (None, None)
-    };
+    let forms_obj =
+        create_multimap_object(context, form_data).expect("failed to create form object");
+    let files_obj =
+        create_upload_files_object(context, files_data).expect("failed to create files object");
 
     // 创建 request 对象
     let mut object_builder = ObjectInitializer::new(context);
@@ -225,32 +234,22 @@ pub fn register_request_to_context(context: &mut Context, request: &ParsedReques
             js_string!("params"),
             params_obj,
             Attribute::READONLY | Attribute::ENUMERABLE,
-        );
-
-    // 添加 parsed body 属性
-    if let Some(json_val) = json_value {
-        object_builder.property(
+        )
+        .property(
             js_string!("json"),
-            json_val,
+            json_value,
             Attribute::READONLY | Attribute::ENUMERABLE,
-        );
-    }
-
-    if let Some(form) = form_obj {
-        object_builder.property(
-            js_string!("form"),
-            form,
+        )
+        .property(
+            js_string!("forms"),
+            forms_obj,
             Attribute::READONLY | Attribute::ENUMERABLE,
-        );
-    }
-
-    if let Some(files) = files_obj {
-        object_builder.property(
+        )
+        .property(
             js_string!("files"),
-            files,
+            files_obj,
             Attribute::READONLY | Attribute::ENUMERABLE,
         );
-    }
 
     let object = object_builder.build();
     context
