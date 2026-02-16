@@ -1,17 +1,35 @@
-use std::cell::RefMut;
-use std::ops::Deref;
-use std::{cell::RefCell, collections::HashMap};
-
-use boa_engine::object::builtins::{JsArray, JsArrayBuffer, JsUint8Array};
+use boa_engine::JsValue;
+use boa_engine::object::builtins::JsArray;
 use boa_engine::{
-    Context, JsString, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
+    Context, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
 };
-use boa_engine::{JsError, JsResult, JsValue};
 use boa_gc::Gc;
 use boa_gc::{Finalize, Trace, empty_trace};
+use std::{cell::RefCell, collections::HashMap};
 
-use crate::utils::parsed_request::ParsedRequest;
+use super::helpers::{
+    check_argument_count, ensure_exists, get_response_from_context, read_u8_array_from_js_value,
+};
 
+/// Response 数据结构
+#[derive(Clone)]
+pub struct Response {
+    pub status_code: u16,
+    pub headers: HashMap<String, Vec<String>>,
+    pub body: Vec<u8>,
+}
+
+impl Response {
+    fn new() -> Self {
+        Response {
+            status_code: 200,
+            headers: HashMap::new(),
+            body: Vec::new(),
+        }
+    }
+}
+
+/// ResponseCell 用于在 JS 引擎中共享 Response
 pub struct ResponseCell {
     pub cell: RefCell<Response>,
 }
@@ -34,90 +52,14 @@ impl ResponseCell {
     }
 }
 
-#[derive(Clone)]
-pub struct Response {
-    pub status_code: u16,
-    pub headers: HashMap<String, Vec<String>>,
-    pub body: Vec<u8>,
-}
-
-impl Response {
-    fn new() -> Self {
-        Response {
-            status_code: 200,
-            headers: HashMap::new(),
-            body: Vec::new(),
-        }
-    }
-}
-
-fn ensure_exists<T>(option: Option<T>, msg: &str) -> JsResult<T> {
-    Ok(option.ok_or_else(|| JsError::from_opaque(js_string!(msg).into()))?)
-}
-
-fn read_data_from_uint8_array(value: &JsValue, ctx: &mut Context) -> JsResult<Vec<u8>> {
-    const ERR_MSG: &'static str = "not a valid Uint8Array";
-
-    let buffer = JsUint8Array::from_object(ensure_exists(value.as_object(), ERR_MSG)?.to_owned())?
-        .buffer(ctx)?;
-    let buffer =
-        JsArrayBuffer::from_object(ensure_exists(buffer.as_object(), ERR_MSG)?.to_owned())?;
-
-    Ok(if let Some(data) = buffer.data() {
-        Vec::from(data.deref())
-    } else {
-        Vec::new()
-    })
-}
-
-fn read_u8_array_from_js_value(value: &JsValue, ctx: &mut Context) -> JsResult<Vec<u8>> {
-    if let Some(string) = value.as_string() {
-        Ok(string.to_std_string_lossy().as_bytes().to_vec())
-    } else {
-        read_data_from_uint8_array(value, ctx)
-    }
-}
-
-fn get_response_from_context(ctx: &mut Context) -> JsResult<RefMut<'_, Response>> {
-    Ok(ensure_exists(
-        ctx.get_data::<Gc<ResponseCell>>(),
-        "failed get response from context",
-    )?
-    .cell
-    .borrow_mut())
-}
-
-fn register_request_to_context(context: &mut Context, request: &ParsedRequest) {
-    let object = ObjectInitializer::new(context)
-        .property(
-            js_string!("client_addr"),
-            JsString::from(request.client_addr.to_string()),
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .build();
-
-    context
-        .register_global_property(
-            js_string!("request"),
-            object,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .expect("property shouldn't exist");
-}
-
-fn check_argument_count(args: &[JsValue], count: usize) -> JsResult<()> {
-    for i in 0..count {
-        ensure_exists(args.get(i), &format!("argument {} not found", i))?;
-    }
-    Ok(())
-}
-
-fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
+/// 注册 Response 对象到 JS 上下文
+pub fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
     let response = Gc::new(ResponseCell::new());
     context.insert_data(response.clone());
 
     let mut object_builder = ObjectInitializer::new(context);
 
+    // response.send(data: String | Uint8Array): void
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
             check_argument_count(args, 1)?;
@@ -126,12 +68,13 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
             let mut response = get_response_from_context(ctx)?;
             response.body.extend(data);
 
-            Ok(boa_engine::JsValue::undefined())
+            Ok(JsValue::undefined())
         }),
         js_string!("send"),
         1,
     );
 
+    // response.sendStatus(code: Number): void
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
             check_argument_count(args, 1)?;
@@ -140,12 +83,13 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
             let mut response = get_response_from_context(ctx)?;
             response.status_code = status_code as u16;
 
-            Ok(boa_engine::JsValue::undefined())
+            Ok(JsValue::undefined())
         }),
         js_string!("sendStatus"),
         1,
     );
 
+    // response.sendHeader(key: String, value: String | Array<String>): void
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
             check_argument_count(args, 2)?;
@@ -185,7 +129,7 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
                     .insert(key, value_vec);
             }
 
-            Ok(boa_engine::JsValue::undefined())
+            Ok(JsValue::undefined())
         }),
         js_string!("sendHeader"),
         2,
@@ -201,12 +145,4 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
         .expect("property shouldn't exist");
 
     response
-}
-
-pub fn register_vars_to_context(
-    context: &mut Context,
-    request: &ParsedRequest,
-) -> Gc<ResponseCell> {
-    register_request_to_context(context, request);
-    register_response_to_context(context)
 }
