@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, time::Duration};
 
 use async_trait::async_trait;
 use axum::{body::Body, http::Response};
-use boa_engine::{Context, JsError, JsValue, Script, Source};
+use boa_engine::{Context, JsError, Script, Source};
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
@@ -143,9 +143,6 @@ impl RouteHandler for ScriptHandler {
                     tokio::select! {
                         v = script.evaluate_async(&mut context) => { 
                             let mut v = v.map_err(|err| ScriptError(err.to_string()))?;
-                            if let JsValue::Undefined = v {
-                                v = JsValue::Null;
-                            }
                             Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
                         },
                         _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),
@@ -161,6 +158,6 @@ impl RouteHandler for ScriptHandler {
             }
         }
 
-        Ok((result, builder.body(Body::from(response.body))?))
+        Ok((result.unwrap_or_else(|| serde_json::Value::Null), builder.body(Body::from(response.body))?))
     }
 }

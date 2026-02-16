@@ -126,7 +126,7 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
             let mut response = get_response_from_context(ctx)?;
             response.body.extend(data);
 
-            Ok(boa_engine::JsValue::Undefined)
+            Ok(boa_engine::JsValue::undefined())
         }),
         js_string!("send"),
         1,
@@ -140,7 +140,7 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
             let mut response = get_response_from_context(ctx)?;
             response.status_code = status_code as u16;
 
-            Ok(boa_engine::JsValue::Undefined)
+            Ok(boa_engine::JsValue::undefined())
         }),
         js_string!("sendStatus"),
         1,
@@ -185,7 +185,7 @@ fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
                     .insert(key, value_vec);
             }
 
-            Ok(boa_engine::JsValue::Undefined)
+            Ok(boa_engine::JsValue::undefined())
         }),
         js_string!("sendHeader"),
         2,
