@@ -4,10 +4,11 @@ use axum::{body::Body, http::Request};
 use encoding_rs::Encoding;
 use futures::TryStreamExt;
 use multer::Multipart;
-use multimap::MultiMap;
 use serde_json::Value;
 use tokio::io::AsyncReadExt;
 use tokio_util::io::{ReaderStream, StreamReader};
+
+use super::multimap::MultiMap;
 
 pub type KeyValues = MultiMap<String, String>;
 pub type UploadFile = MultiMap<String, (String, Vec<u8>)>;
@@ -149,7 +150,7 @@ impl ParsedRequest {
     }
 
     async fn parse_body(&mut self) {
-        let content_type = match self.headers.get("Content-Type") {
+        let content_type = match self.headers.get(&"Content-Type".to_owned()) {
             Some(content_type) => content_type,
             None => {
                 // 没有 content-type 不进行解析
