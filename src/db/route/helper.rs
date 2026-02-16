@@ -77,6 +77,7 @@ pub async fn update_route(
         .set((
             route::pattern_kind.eq(&updated_route.pattern_kind),
             route::pattern.eq(&updated_route.pattern),
+            route::priority.eq(updated_route.priority),
             route::timeout.eq(updated_route.timeout),
             route::catalog.eq(&updated_route.catalog),
             route::handler_kind.eq(&updated_route.handler_kind),

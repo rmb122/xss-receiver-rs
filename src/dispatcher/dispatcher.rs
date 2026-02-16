@@ -26,8 +26,23 @@ impl Dispatcher {
     pub fn dispatch(&self, request: &Request<Body>) -> Option<Arc<Route>> {
         let path = request.uri().path();
 
-        if let Some(idx) = self.route_regex_set.matches(path).iter().next() {
-            return Some(self.routes[idx].clone());
+        if let Some(max_idx) =
+            self.route_regex_set
+                .matches(path)
+                .iter()
+                .fold(None, |max: Option<usize>, x: usize| match max {
+                    // 返回 priority 最大的 route
+                    None => Some(x),
+                    Some(max) => {
+                        if self.routes[max].priority < self.routes[x].priority {
+                            Some(x)
+                        } else {
+                            Some(max)
+                        }
+                    }
+                })
+        {
+            return Some(self.routes[max_idx].clone());
         }
 
         None

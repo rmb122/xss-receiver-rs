@@ -27,6 +27,7 @@ diesel::table! {
         pattern_kind -> Int2,
         #[max_length = 1024]
         pattern -> Varchar,
+        priority -> Int4,
         timeout -> Int4,
         #[max_length = 1024]
         catalog -> Varchar,

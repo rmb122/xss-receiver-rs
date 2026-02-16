@@ -23,6 +23,7 @@ pub trait RouteHandler: Sync + Send {
 pub struct Route {
     pub(crate) pattern: String,
     pub(crate) handler: Box<dyn RouteHandler>,
+    pub(crate) priority: i32,
     pub(crate) write_log: bool,
 }
 
@@ -50,6 +51,7 @@ impl Route {
         return Ok(Route {
             pattern: pattern,
             handler: handler,
+            priority: value.priority,
             write_log: value.write_log,
         });
     }

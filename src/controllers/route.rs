@@ -1,5 +1,6 @@
 use std::sync::{Arc, RwLock};
 
+use axum::http::request;
 use axum::{Json, extract::State};
 use chrono::Utc;
 use diesel_async::AsyncPgConnection;
@@ -28,6 +29,7 @@ use crate::{
 pub struct CreateRouteRequest {
     pattern_kind: PatternKind,
     pattern: String,
+    priority: i32,
     timeout: i32,
     catalog: String,
     handler_kind: HandlerKind,
@@ -48,6 +50,7 @@ pub struct UpdateRouteRequest {
     route_id: i32,
     pattern_kind: PatternKind,
     pattern: String,
+    priority: i32,
     timeout: i32,
     catalog: String,
     handler_kind: HandlerKind,
@@ -98,6 +101,7 @@ pub async fn compile_routes(
                 id: modify.route_id,
                 pattern_kind: new_route.pattern_kind,
                 pattern: new_route.pattern.clone(),
+                priority: new_route.priority,
                 timeout: new_route.timeout,
                 catalog: new_route.catalog.clone(),
                 handler_kind: new_route.handler_kind,
@@ -136,6 +140,7 @@ pub async fn create_route(
     let new_route = NewRoute {
         pattern_kind: request.pattern_kind,
         pattern: request.pattern.clone(),
+        priority: request.priority,
         timeout: request.timeout,
         catalog: request.catalog.clone(),
         handler_kind: request.handler_kind,
@@ -219,6 +224,7 @@ pub async fn update_route(
     let updated_route = NewRoute {
         pattern_kind: request.pattern_kind,
         pattern: request.pattern,
+        priority: request.priority,
         timeout: request.timeout,
         catalog: request.catalog,
         handler_kind: request.handler_kind,

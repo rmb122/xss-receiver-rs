@@ -56,6 +56,7 @@ pub struct Route {
     pub id: i32,
     pub pattern_kind: PatternKind,
     pub pattern: String,
+    pub priority: i32,
     pub timeout: i32,
     pub catalog: String,
     pub handler_kind: HandlerKind,
@@ -71,6 +72,7 @@ pub struct Route {
 pub struct NewRoute {
     pub pattern_kind: PatternKind,
     pub pattern: String,
+    pub priority: i32,
     pub timeout: i32,
     pub catalog: String,
     pub handler_kind: HandlerKind,

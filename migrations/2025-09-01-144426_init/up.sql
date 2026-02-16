@@ -41,6 +41,7 @@ CREATE TABLE route (
 	id serial4 NOT NULL,
 	pattern_kind int2 NOT NULL,
 	pattern varchar(1024) NOT NULL,
+	priority int4 NOT NULL,
 	"timeout" int4 NOT NULL,
 	"catalog" varchar(1024) NOT NULL,
 	handler_kind int2 NOT NULL,
