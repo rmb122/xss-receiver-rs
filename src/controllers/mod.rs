@@ -124,11 +124,11 @@ pub fn get_app_router(context: Context) -> Router<()> {
     let system_log_router = OpenApiRouter::new().routes(routes!(system_log::get_system_logs));
 
     let file_router = OpenApiRouter::new()
-        .routes(routes!(file::list_directories))
+        .routes(routes!(file::list_all_directorie))
         .routes(routes!(file::create_directory))
         .routes(routes!(file::delete_directory))
         .routes(routes!(file::rename_directory))
-        .routes(routes!(file::list_files_in_directory))
+        .routes(routes!(file::list_directory))
         .routes(routes!(file::upload_file))
         .routes(routes!(file::download_file))
         .routes(routes!(file::delete_file))

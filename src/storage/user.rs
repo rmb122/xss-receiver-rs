@@ -28,7 +28,7 @@ impl UserStorage {
     }
 
     /// 递归列出所有目录及其文件
-    pub fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
+    pub fn list_all_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
         let mut result = HashMap::new();
         let entries = fs::read_dir(&self.path)?;
 
@@ -40,7 +40,7 @@ impl UserStorage {
                     let dir_name_string = dir_name.to_string();
 
                     // 列出该目录下的所有文件
-                    let files = self.list_directory_file(&dir_name_string)?;
+                    let files = self.list_directory(&dir_name_string)?;
                     result.insert(dir_name_string, files);
                 }
             }
@@ -50,7 +50,7 @@ impl UserStorage {
     }
 
     /// 列出指定目录下文件
-    pub fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
+    pub fn list_directory(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
         let mut files = Vec::new();
 
         let path = self.path.join(directory);

@@ -76,11 +76,11 @@ fn make_file_response(file: File, filename: &str) -> impl IntoResponse + use<> {
         (status = OK, body = Response<DirectoryMapResponse>)
     )
 )]
-pub async fn list_directories(
+pub async fn list_all_directorie(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
 ) -> Result<Response<DirectoryMapResponse>, AppError> {
-    let directories = ctx.storage.user().list_directory()?;
+    let directories = ctx.storage.user().list_all_directory()?;
     Ok(Response::ok().payload(directories))
 }
 
@@ -149,12 +149,12 @@ pub async fn rename_directory(
         (status = OK, body = Response<FileListResponse>)
     ),
 )]
-pub async fn list_files_in_directory(
+pub async fn list_directory(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
     Path(directory): Path<String>,
 ) -> Result<Response<FileListResponse>, AppError> {
-    let files = ctx.storage.user().list_directory_file(&directory)?;
+    let files = ctx.storage.user().list_directory(&directory)?;
     Ok(Response::ok().payload(files))
 }
 
