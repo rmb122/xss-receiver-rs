@@ -56,18 +56,4 @@ impl TempStorage {
 
         Ok(())
     }
-
-    /// 读取指定 id 的临时文件内容
-    pub fn read(&self, id: &str) -> anyhow::Result<Vec<u8>> {
-        let file_path = self.path.join(validate_hex_string(id)?);
-        let content = fs::read(file_path)?;
-        Ok(content)
-    }
-
-    /// 删除指定 id 的临时文件
-    pub fn delete(&self, id: &str) -> anyhow::Result<()> {
-        let file_path = self.path.join(validate_hex_string(id)?);
-        fs::remove_file(file_path)?;
-        Ok(())
-    }
 }

@@ -7,7 +7,7 @@ use tokio::task;
 use tokio_util::io::ReaderStream;
 
 use crate::db;
-use crate::storage::Storage;
+use crate::storage::{Storage, UserStorage};
 use crate::utils::parsed_request::ParsedRequest;
 
 use super::script_engine::register_vars_to_context;
@@ -41,9 +41,11 @@ impl Route {
 
         let handler: Box<dyn RouteHandler> = match value.handler_kind {
             db::route::model::HandlerKind::STATIC => Box::new(StaticHandler::new(filename)),
-            db::route::model::HandlerKind::SCRIPT => {
-                Box::new(ScriptHandler::new(filename, value.timeout))
-            }
+            db::route::model::HandlerKind::SCRIPT => Box::new(ScriptHandler::new(
+                filename,
+                value.timeout,
+                storage.user().clone(),
+            )),
         };
 
         return Ok(Route {
@@ -90,13 +92,15 @@ impl RouteHandler for StaticHandler {
 pub struct ScriptHandler {
     filename: String,
     timeout: i32,
+    user_storage: UserStorage,
 }
 
 impl ScriptHandler {
-    pub fn new<T: Into<String>>(filename: T, timeout: i32) -> Self {
+    pub fn new<T: Into<String>>(filename: T, timeout: i32, user_storage: UserStorage) -> Self {
         return Self {
             filename: filename.into(),
             timeout,
+            user_storage,
         };
     }
 }
@@ -127,11 +131,12 @@ impl RouteHandler for ScriptHandler {
         // 每次运行时重新读取 script
         let script = tokio::fs::read_to_string(&self.filename).await?;
         let timeout = self.timeout.clone();
+        let user_storage = self.user_storage.clone();
 
         // 在新线程中运行 js
         let (result, response) = task::spawn_blocking(move || {
             let mut context = Context::default();
-            let response = register_vars_to_context(&mut context, &request);
+            let response = register_vars_to_context(&mut context, &request, user_storage);
             let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> = Source::from_bytes(script.as_bytes());
             let script = Script::parse(source, None, &mut context)?;
 

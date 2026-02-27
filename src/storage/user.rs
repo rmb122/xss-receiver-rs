@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
@@ -18,6 +19,7 @@ pub struct FileInfo {
 }
 
 /// UserStorage - 用于给用户保存文件夹
+#[derive(Clone)]
 pub struct UserStorage {
     path: PathBuf,
 }
@@ -124,6 +126,10 @@ impl UserStorage {
         validate_path_component(directory)?;
         validate_path_component(new_directory)?;
 
+        if filename.is_none() && new_filename.is_some() {
+            return Err(anyhow::anyhow!("cannot rename a directory to a file path"));
+        }
+
         let src_path = match filename {
             Some(name) => {
                 validate_path_component(name)?;
@@ -142,17 +148,6 @@ impl UserStorage {
 
         fs::rename(&src_path, &dst_path)?;
         Ok(())
-    }
-
-    /// 一次性读取文件
-    pub fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
-
-        let content = fs::read(path)?;
-        Ok(content)
     }
 
     pub fn get_absolute_path(&self, handler: &str) -> anyhow::Result<String> {
@@ -190,6 +185,17 @@ impl UserStorage {
         Ok(content)
     }
 
+    /// 一次性读取文件
+    pub fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
+
+        let path = self.path.join(directory).join(name);
+
+        let content = fs::read(path)?;
+        Ok(content)
+    }
+
     /// 写入文件
     pub fn write_file(&self, directory: &str, name: &str, content: &[u8]) -> anyhow::Result<()> {
         validate_path_component(directory)?;
@@ -198,6 +204,20 @@ impl UserStorage {
         let path = self.path.join(directory).join(name);
         // 写入文件
         fs::write(&path, content)?;
+        Ok(())
+    }
+
+    /// 在文件末尾追加内容（文件不存在则创建）
+    pub fn append_file(&self, directory: &str, name: &str, content: &[u8]) -> anyhow::Result<()> {
+        validate_path_component(directory)?;
+        validate_path_component(name)?;
+
+        let path = self.path.join(directory).join(name);
+        let mut file = fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&path)?;
+        file.write_all(content)?;
         Ok(())
     }
 }

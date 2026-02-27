@@ -43,6 +43,7 @@ pub struct MergeRequest {
 /// 重命名请求
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct RenameRequest {
+    pub new_directory: Option<String>,
     pub new_name: String,
 }
 
@@ -253,9 +254,13 @@ pub async fn rename_file(
     Path((directory, file)): Path<(String, String)>,
     Json(request): Json<RenameRequest>,
 ) -> Result<Response<bool>, AppError> {
-    ctx.storage
-        .user()
-        .rename(&directory, Some(&file), &directory, Some(&request.new_name))?;
+    let target_directory = request.new_directory.as_deref().unwrap_or(&directory);
+    ctx.storage.user().rename(
+        &directory,
+        Some(&file),
+        target_directory,
+        Some(&request.new_name),
+    )?;
 
     Ok(Response::ok().payload(true))
 }

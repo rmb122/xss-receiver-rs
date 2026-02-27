@@ -37,11 +37,4 @@ impl LogStorage {
         let content = options.open(file_path)?;
         Ok(content)
     }
-
-    /// 读取指定 hash 的文件内容
-    pub fn read(&self, hash: &str) -> anyhow::Result<Vec<u8>> {
-        let file_path = self.path.join(validate_hex_string(hash)?);
-        let content = fs::read(file_path)?;
-        Ok(content)
-    }
 }
