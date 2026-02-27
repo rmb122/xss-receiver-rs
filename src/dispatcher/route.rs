@@ -145,7 +145,7 @@ impl RouteHandler for ScriptHandler {
                 .block_on(async {
                     tokio::select! {
                         v = script.evaluate_async(&mut context) => { 
-                            let mut v = v.map_err(|err| ScriptError(err.to_string()))?;
+                            let v = v.map_err(|err| ScriptError(err.to_string()))?;
                             Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
                         },
                         _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),

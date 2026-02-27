@@ -1,6 +1,5 @@
 use std::sync::{Arc, RwLock};
 
-use axum::http::request;
 use axum::{Json, extract::State};
 use chrono::Utc;
 use diesel_async::AsyncPgConnection;
