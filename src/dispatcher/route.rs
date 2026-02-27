@@ -36,9 +36,7 @@ impl Route {
             db::route::model::PatternKind::PLAIN => {
                 format!("^{}$", regex::escape(&value.pattern))
             }
-            db::route::model::PatternKind::REGEX => {
-                value.pattern.clone()
-            }
+            db::route::model::PatternKind::REGEX => value.pattern.clone(),
         };
 
         let handler: Box<dyn RouteHandler> = match value.handler_kind {
@@ -158,6 +156,9 @@ impl RouteHandler for ScriptHandler {
             }
         }
 
-        Ok((result.unwrap_or_else(|| serde_json::Value::Null), builder.body(Body::from(response.body))?))
+        Ok((
+            result.unwrap_or_else(|| serde_json::Value::Null),
+            builder.body(Body::from(response.body))?,
+        ))
     }
 }

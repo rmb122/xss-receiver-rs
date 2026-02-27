@@ -64,10 +64,8 @@ pub async fn get_http_log_from_request(
         ParsedRequestBody::Form(form, file) => {
             let mut persisted_upload_file = PersistedUploadFile::new();
             for i in file.iter() {
-                persisted_upload_file.insert(
-                    i.0.clone(),
-                    (i.1.0.clone(), storage.log().save(&i.1.1).await?),
-                );
+                persisted_upload_file
+                    .insert(i.0.clone(), (i.1.0.clone(), storage.log().save(&i.1.1)?));
             }
 
             (

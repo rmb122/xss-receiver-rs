@@ -73,7 +73,7 @@ impl Context {
 
         let mut conn = pool.get().await?;
 
-        let storage = Storage::new(&config.storage_path).await?;
+        let storage = Storage::new(&config.storage_path)?;
 
         Ok(Context {
             config: Arc::new(config.to_owned()),

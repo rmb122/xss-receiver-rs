@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::{self, File};
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
-use serde::{Deserialize, Serialize};
-use tokio::fs::{self, File};
 
 use crate::storage::validate_path_component;
 
@@ -28,18 +28,19 @@ impl UserStorage {
     }
 
     /// 递归列出所有目录及其文件
-    pub async fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
+    pub fn list_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
         let mut result = HashMap::new();
-        let mut entries = fs::read_dir(&self.path).await?;
+        let entries = fs::read_dir(&self.path)?;
 
-        while let Some(entry) = entries.next_entry().await? {
-            let file_type = entry.file_type().await?;
+        for entry in entries {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
             if file_type.is_dir() {
                 if let Some(dir_name) = entry.file_name().to_str() {
                     let dir_name_string = dir_name.to_string();
 
                     // 列出该目录下的所有文件
-                    let files = self.list_directory_file(&dir_name_string).await?;
+                    let files = self.list_directory_file(&dir_name_string)?;
                     result.insert(dir_name_string, files);
                 }
             }
@@ -49,24 +50,23 @@ impl UserStorage {
     }
 
     /// 列出指定目录下文件
-    pub async fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
+    pub fn list_directory_file(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
         let mut files = Vec::new();
 
         let path = self.path.join(directory);
-        let mut entries = fs::read_dir(&path).await?;
+        let entries = fs::read_dir(&path)?;
 
-        while let Some(entry) = entries.next_entry().await? {
-            let file_type = entry.file_type().await?;
+        for entry in entries {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
             if file_type.is_file() {
                 if let Some(name) = entry.file_name().to_str() {
                     // 获取文件元数据
-                    let metadata = entry.metadata().await?;
+                    let metadata = entry.metadata()?;
                     let size = metadata.len();
-                    let modified_time = metadata
-                        .modified()?
-                        .duration_since(UNIX_EPOCH)?
-                        .as_secs() as i64;
-                    
+                    let modified_time =
+                        metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
+
                     files.push(FileInfo {
                         name: name.to_string(),
                         size,
@@ -80,46 +80,78 @@ impl UserStorage {
     }
 
     /// 在根目录下创建新目录
-    pub async fn new_directory(&self, directory: &str) -> anyhow::Result<()> {
+    pub fn new_directory(&self, directory: &str) -> anyhow::Result<()> {
         validate_path_component(directory)?;
 
         let path = self.path.join(directory);
 
         // 如果目录已存在，返回错误
-        fs::create_dir(&path).await?;
+        fs::create_dir(&path)?;
         Ok(())
     }
 
-    /// 删除指定目录
-    pub async fn delete_directory(&self, directory: &str) -> anyhow::Result<()> {
+    /// 删除目录或文件
+    /// - filename 为 Some(name) 时，删除指定目录下的指定文件
+    /// - filename 为 None 时，删除指定目录本身
+    pub fn delete(&self, directory: &str, filename: Option<&str>) -> anyhow::Result<()> {
         validate_path_component(directory)?;
 
-        let path = self.path.join(directory);
+        match filename {
+            Some(name) => {
+                validate_path_component(name)?;
+                let path = self.path.join(directory).join(name);
+                fs::remove_file(&path)?;
+            }
+            None => {
+                let path = self.path.join(directory);
+                fs::remove_dir_all(&path)?;
+            }
+        }
 
-        fs::remove_dir_all(&path).await?;
         Ok(())
     }
 
-    /// 重命名指定目录
-    pub async fn rename_directory(&self, directory: &str, new_name: &str) -> anyhow::Result<()> {
+    /// 重命名或移动目录/文件
+    /// - `directory` + `filename`：源路径，`filename` 为 `None` 时表示目录本身，`Some(name)` 时表示目录下的文件
+    /// - `new_directory` + `new_filename`：目标路径，语义同上
+    pub fn rename(
+        &self,
+        directory: &str,
+        filename: Option<&str>,
+        new_directory: &str,
+        new_filename: Option<&str>,
+    ) -> anyhow::Result<()> {
         validate_path_component(directory)?;
-        validate_path_component(new_name)?;
+        validate_path_component(new_directory)?;
 
-        let old_path = self.path.join(directory);
-        let new_path = self.path.join(new_name);
+        let src_path = match filename {
+            Some(name) => {
+                validate_path_component(name)?;
+                self.path.join(directory).join(name)
+            }
+            None => self.path.join(directory),
+        };
 
-        fs::rename(&old_path, &new_path).await?;
+        let dst_path = match new_filename {
+            Some(name) => {
+                validate_path_component(name)?;
+                self.path.join(new_directory).join(name)
+            }
+            None => self.path.join(new_directory),
+        };
+
+        fs::rename(&src_path, &dst_path)?;
         Ok(())
     }
 
     /// 一次性读取文件
-    pub async fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
+    pub fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
         validate_path_component(directory)?;
         validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
 
-        let content = fs::read(path).await?;
+        let content = fs::read(path)?;
         Ok(content)
     }
 
@@ -143,7 +175,7 @@ impl UserStorage {
     }
 
     /// 打开目标文件
-    pub async fn open_file(
+    pub fn open_file(
         &self,
         directory: &str,
         name: &str,
@@ -154,52 +186,18 @@ impl UserStorage {
 
         let path = self.path.join(directory).join(name);
 
-        let content = options.open(path).await?;
+        let content = options.open(path)?;
         Ok(content)
     }
 
     /// 写入文件
-    pub async fn write_file(
-        &self,
-        directory: &str,
-        name: &str,
-        content: &[u8],
-    ) -> anyhow::Result<()> {
+    pub fn write_file(&self, directory: &str, name: &str, content: &[u8]) -> anyhow::Result<()> {
         validate_path_component(directory)?;
         validate_path_component(name)?;
 
         let path = self.path.join(directory).join(name);
         // 写入文件
-        fs::write(&path, content).await?;
-        Ok(())
-    }
-
-    /// 删除指定文件
-    pub async fn delete_file(&self, directory: &str, name: &str) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
-
-        fs::remove_file(&path).await?;
-        Ok(())
-    }
-
-    /// 重命名指定文件
-    pub async fn rename_file(
-        &self,
-        directory: &str,
-        name: &str,
-        new_name: &str,
-    ) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-        validate_path_component(new_name)?;
-
-        let old_path = self.path.join(directory).join(name);
-        let new_path = self.path.join(directory).join(new_name);
-
-        fs::rename(&old_path, &new_path).await?;
+        fs::write(&path, content)?;
         Ok(())
     }
 }

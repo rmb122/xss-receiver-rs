@@ -7,7 +7,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::fs::{self, File};
+use std::fs::OpenOptions;
+use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::{
@@ -79,7 +80,7 @@ pub async fn list_directories(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
 ) -> Result<Response<DirectoryMapResponse>, AppError> {
-    let directories = ctx.storage.user().list_directory().await?;
+    let directories = ctx.storage.user().list_directory()?;
     Ok(Response::ok().payload(directories))
 }
 
@@ -96,7 +97,7 @@ pub async fn create_directory(
     Claims(_user): Claims<LoggedUser>,
     Path(directory): Path<String>,
 ) -> Result<Response<bool>, AppError> {
-    ctx.storage.user().new_directory(&directory).await?;
+    ctx.storage.user().new_directory(&directory)?;
     Ok(Response::ok().payload(true))
 }
 
@@ -113,7 +114,7 @@ pub async fn delete_directory(
     Claims(_user): Claims<LoggedUser>,
     Path(directory): Path<String>,
 ) -> Result<Response<bool>, AppError> {
-    ctx.storage.user().delete_directory(&directory).await?;
+    ctx.storage.user().delete(&directory, None)?;
     Ok(Response::ok().payload(true))
 }
 
@@ -133,8 +134,7 @@ pub async fn rename_directory(
 ) -> Result<Response<bool>, AppError> {
     ctx.storage
         .user()
-        .rename_directory(&directory, &request.new_name)
-        .await?;
+        .rename(&directory, None, &request.new_name, None)?;
 
     Ok(Response::ok().payload(true))
 }
@@ -154,7 +154,7 @@ pub async fn list_files_in_directory(
     Claims(_user): Claims<LoggedUser>,
     Path(directory): Path<String>,
 ) -> Result<Response<FileListResponse>, AppError> {
-    let files = ctx.storage.user().list_directory_file(&directory).await?;
+    let files = ctx.storage.user().list_directory_file(&directory)?;
     Ok(Response::ok().payload(files))
 }
 
@@ -183,10 +183,7 @@ pub async fn upload_file(
 
     let content = file_content.ok_or_else(|| anyhow::anyhow!("no file content provided"))?;
 
-    ctx.storage
-        .user()
-        .write_file(&directory, &file, &content)
-        .await?;
+    ctx.storage.user().write_file(&directory, &file, &content)?;
 
     Ok(Response::ok().payload(true))
 }
@@ -206,17 +203,16 @@ pub async fn download_file(
     Path((directory, file)): Path<(String, String)>,
 ) -> impl IntoResponse {
     // 尝试打开文件
-    let file_handle = ctx
-        .storage
-        .user()
-        .open_file(&directory, &file, fs::OpenOptions::new().read(true))
-        .await;
+    let file_handle =
+        ctx.storage
+            .user()
+            .open_file(&directory, &file, OpenOptions::new().read(true));
 
     // 处理结果
     match file_handle {
-        Ok(file_obj) => {
+        Ok(file_handle) => {
             // 文件存在，返回文件流
-            make_file_response(file_obj, &file).into_response()
+            make_file_response(File::from_std(file_handle), &file).into_response()
         }
         Err(_) => {
             // 文件不存在或读取失败，返回 404
@@ -238,7 +234,7 @@ pub async fn delete_file(
     Claims(_user): Claims<LoggedUser>,
     Path((directory, file)): Path<(String, String)>,
 ) -> Result<Response<bool>, AppError> {
-    ctx.storage.user().delete_file(&directory, &file).await?;
+    ctx.storage.user().delete(&directory, Some(&file))?;
 
     Ok(Response::ok().payload(true))
 }
@@ -259,8 +255,7 @@ pub async fn rename_file(
 ) -> Result<Response<bool>, AppError> {
     ctx.storage
         .user()
-        .rename_file(&directory, &file, &request.new_name)
-        .await?;
+        .rename(&directory, Some(&file), &directory, Some(&request.new_name))?;
 
     Ok(Response::ok().payload(true))
 }
@@ -291,7 +286,7 @@ pub async fn upload_part(
 
     let content = chunk_content.ok_or_else(|| anyhow::anyhow!("no chunk content provided"))?;
 
-    let chunk_id = ctx.storage.temp().save(&content).await?;
+    let chunk_id = ctx.storage.temp().save(&content)?;
 
     Ok(Response::ok().payload(PartUploadResponse { chunk_id }))
 }
@@ -309,24 +304,14 @@ pub async fn merge_parts(
     Claims(_user): Claims<LoggedUser>,
     Json(request): Json<MergeRequest>,
 ) -> Result<Response<bool>, AppError> {
-    let target_file = ctx
-        .storage
-        .user()
-        .open_file(
-            &request.directory,
-            &request.filename,
-            fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true),
-        )
-        .await?;
+    let target_file = ctx.storage.user().open_file(
+        &request.directory,
+        &request.filename,
+        OpenOptions::new().create(true).truncate(true).write(true),
+    )?;
 
     // 合并分片
-    ctx.storage
-        .temp()
-        .merge(&request.chunk_ids, target_file)
-        .await?;
+    ctx.storage.temp().merge(&request.chunk_ids, target_file)?;
 
     Ok(Response::ok().payload(true))
 }
@@ -348,17 +333,13 @@ pub async fn download_log_file(
     Path(file): Path<String>,
 ) -> impl IntoResponse {
     // 尝试打开日志文件
-    let file_handle = ctx
-        .storage
-        .log()
-        .open(&file, fs::OpenOptions::new().read(true))
-        .await;
+    let file_handle = ctx.storage.log().open(&file, OpenOptions::new().read(true));
 
     // 处理结果
     match file_handle {
-        Ok(file_obj) => {
+        Ok(file_handle) => {
             // 文件存在，返回文件流
-            make_file_response(file_obj, &file).into_response()
+            make_file_response(File::from_std(file_handle), &file).into_response()
         }
         Err(_) => {
             // 文件不存在或读取失败，返回 404

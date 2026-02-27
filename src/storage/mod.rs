@@ -6,8 +6,8 @@ pub use log::LogStorage;
 pub use temp::TempStorage;
 pub use user::{FileInfo, UserStorage};
 
+use std::fs;
 use std::path::PathBuf;
-use tokio::fs;
 
 /// Storage 主类，管理三种不同类型的存储
 pub struct Storage {
@@ -18,11 +18,11 @@ pub struct Storage {
 
 impl Storage {
     /// 创建 Storage 实例，会自动创建 user/log/temp 三个子目录
-    pub async fn new(path: &str) -> anyhow::Result<Self> {
+    pub fn new(path: &str) -> anyhow::Result<Self> {
         let base_path = PathBuf::from(path);
 
         // 确保基础路径存在
-        fs::create_dir_all(&base_path).await?;
+        fs::create_dir_all(&base_path)?;
 
         // 创建三个子目录
         let user_path = base_path.join("user");
@@ -31,7 +31,7 @@ impl Storage {
 
         // 创建目录，如果已存在则忽略错误
         for dir_path in [&user_path, &log_path, &temp_path] {
-            match fs::create_dir(dir_path).await {
+            match fs::create_dir(dir_path) {
                 Ok(_) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(e) => return Err(e.into()),

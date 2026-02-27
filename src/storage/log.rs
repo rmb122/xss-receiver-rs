@@ -1,6 +1,6 @@
 use sha1::Digest;
+use std::fs::{self, File, OpenOptions};
 use std::path::PathBuf;
-use tokio::fs::{self, File};
 
 use crate::storage::validate_hex_string;
 
@@ -16,7 +16,7 @@ impl LogStorage {
 
     /// 保存文件内容，计算 hash 并返回文件名
     /// 如果文件已存在则不重复保存
-    pub async fn save(&self, content: &[u8]) -> anyhow::Result<String> {
+    pub fn save(&self, content: &[u8]) -> anyhow::Result<String> {
         let mut hasher = sha1::Sha1::new();
         hasher.update(content);
         let hash = hex::encode(hasher.finalize());
@@ -24,24 +24,24 @@ impl LogStorage {
         let file_path = self.path.join(&hash);
 
         // 检查文件是否已存在
-        if !fs::try_exists(&file_path).await? {
-            fs::write(&file_path, content).await?;
+        if !file_path.exists() {
+            fs::write(&file_path, content)?;
         }
 
         Ok(hash)
     }
 
     /// 打开文件
-    pub async fn open(&self, hash: &str, options: &mut fs::OpenOptions) -> anyhow::Result<File> {
+    pub fn open(&self, hash: &str, options: &mut OpenOptions) -> anyhow::Result<File> {
         let file_path = self.path.join(validate_hex_string(hash)?);
-        let content = options.open(file_path).await?;
+        let content = options.open(file_path)?;
         Ok(content)
     }
 
     /// 读取指定 hash 的文件内容
-    pub async fn read(&self, hash: &str) -> anyhow::Result<Vec<u8>> {
+    pub fn read(&self, hash: &str) -> anyhow::Result<Vec<u8>> {
         let file_path = self.path.join(validate_hex_string(hash)?);
-        let content = fs::read(file_path).await?;
+        let content = fs::read(file_path)?;
         Ok(content)
     }
 }
