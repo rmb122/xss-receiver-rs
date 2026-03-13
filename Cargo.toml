@@ -36,7 +36,6 @@ tokio = { version = "1.45.0", features = ["full"] }
 tokio-util = { version = "0.7.15", features = ["io", "compat"] }
 axum = { version = "0.8.4", features = ["multipart"] }
 axum-extra = { version = "0.12.5", features = ["cookie"] }
-tower-http = { version = "0.6.8", features = ["cors"] }
 
 boa_engine = { version = "0.21.0", features = ["annex-b"] }
 boa_gc = "0.21.0"

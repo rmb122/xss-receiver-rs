@@ -1,15 +1,9 @@
 use std::sync::{Arc, RwLock};
 
-use axum::{
-    Router,
-    extract::FromRef,
-    http::{Method, StatusCode, header},
-    response::IntoResponse,
-};
+use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 
 use jsonwebtoken::Algorithm;
-use tower_http::cors::{AllowOrigin, CorsLayer};
 use utoipa::openapi::Server;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
@@ -160,23 +154,11 @@ pub fn get_app_router(context: Context) -> Router<()> {
             .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
     );
 
-    let mut router = if prefix.is_empty() || prefix == "/" {
+    let router = if prefix.is_empty() || prefix == "/" {
         Router::new().merge(admin_router)
     } else {
         Router::new().nest(&prefix, admin_router)
     };
-
-    if context.config.cors {
-        router = router.layer(
-            CorsLayer::new()
-                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
-                .allow_credentials(true)
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
-                .allow_origin(AllowOrigin::list(["http://localhost:5173"
-                    .parse()
-                    .unwrap()])),
-        );
-    }
 
     return router.fallback(index::index).with_state(context);
 }

@@ -134,7 +134,7 @@ impl ParsedRequest {
         (parsed_content_type, attrs)
     }
 
-    fn try_decode<T: AsRef<str>>(content: &[u8], charset: Option<T>) -> Cow<[u8]> {
+    fn try_decode<T: AsRef<str>>(content: &'_ [u8], charset: Option<T>) -> Cow<'_, [u8]> {
         let charset = match charset {
             None => return Cow::Borrowed(content),
             Some(charset) => charset,
