@@ -39,17 +39,26 @@ impl Locator {
     fn format_location(location: String) -> String {
         // 中国|福建省|福州市|中国电信|CN
         // -> 中国福建省福州市中国电信
+
+        // US|X|X|X
+        // -> US X X X
         let parts: Vec<_> = location.split("|").collect();
 
-        if parts.len() > 1 {
-            if parts[0] == "Reserved" {
-                return "局域网".to_owned();
-            }
+        if parts.is_empty() {
+            return location;
+        }
 
-            // 去掉最后的 |CN
-            return parts[..parts.len() - 1].join("");
+        if parts[0] == "Reserved" {
+            return "局域网".to_owned();
+        }
+
+        // 去掉最后的 |CN
+        let all_ascii = parts.iter().all(|x| x.is_ascii());
+
+        if all_ascii {
+            return parts[..parts.len() - 1].join(" ");
         } else {
-            return parts.join("");
+            return parts[..parts.len() - 1].join("");
         }
     }
 
