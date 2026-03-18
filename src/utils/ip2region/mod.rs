@@ -42,7 +42,8 @@ impl Locator {
 
         // US|X|X|X
         // -> US X X X
-        let parts: Vec<_> = location.split("|").collect();
+        // 同时取消占位的 "0"
+        let parts: Vec<_> = location.split("|").filter(|x| *x != "0").collect();
 
         if parts.is_empty() {
             return location;
