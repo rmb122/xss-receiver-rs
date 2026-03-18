@@ -46,6 +46,7 @@ impl Route {
                 value.timeout,
                 storage.user().clone(),
             )),
+            db::route::model::HandlerKind::NONE => Box::new(NoneHandler::new()),
         };
 
         return Ok(Route {
@@ -164,6 +165,27 @@ impl RouteHandler for ScriptHandler {
         Ok((
             result.unwrap_or_else(|| serde_json::Value::Null),
             builder.body(Body::from(response.body))?,
+        ))
+    }
+}
+
+pub struct NoneHandler {}
+
+impl NoneHandler {
+    pub fn new() -> Self {
+        return NoneHandler {};
+    }
+}
+
+#[async_trait]
+impl RouteHandler for NoneHandler {
+    async fn handle(
+        &self,
+        _: ParsedRequest,
+    ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
+        Ok((
+            serde_json::Value::Null,
+            Response::builder().status(404).body(Body::empty())?,
         ))
     }
 }

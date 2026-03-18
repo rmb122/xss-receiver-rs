@@ -47,6 +47,7 @@ pub enum PatternKind {
 pub enum HandlerKind {
     STATIC,
     SCRIPT,
+    NONE,
 }
 
 #[derive(Queryable, Selectable, Insertable, Serialize, Deserialize, utoipa::ToSchema)]
