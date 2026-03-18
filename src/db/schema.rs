@@ -17,7 +17,7 @@ diesel::table! {
         file -> Jsonb,
         extra_info -> Jsonb,
         error_log -> Nullable<Text>,
-        create_time -> Timestamp,
+        create_time -> Timestamptz,
     }
 }
 
@@ -35,7 +35,7 @@ diesel::table! {
         handler -> Varchar,
         write_log -> Bool,
         comment -> Text,
-        create_time -> Timestamp,
+        create_time -> Timestamptz,
     }
 }
 
@@ -43,7 +43,7 @@ diesel::table! {
     system_log (id) {
         id -> Int4,
         log -> Varchar,
-        create_time -> Timestamp,
+        create_time -> Timestamptz,
     }
 }
 
@@ -53,8 +53,13 @@ diesel::table! {
         #[max_length = 128]
         username -> Varchar,
         password -> Varchar,
-        create_time -> Timestamp,
+        create_time -> Timestamptz,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(http_log, route, system_log, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    http_log,
+    route,
+    system_log,
+    users,
+);

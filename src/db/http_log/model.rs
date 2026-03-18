@@ -50,7 +50,7 @@ pub struct HttpLog {
     pub file: diesel_json::Json<PersistedUploadFile>,
     pub extra_info: serde_json::Value,
     pub error_log: Option<String>,
-    pub create_time: chrono::NaiveDateTime,
+    pub create_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Insertable)]

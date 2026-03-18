@@ -28,7 +28,7 @@ pub async fn create_init_admin_user(
                 id: ADMIN_ID,
                 username: username.clone(),
                 password: password_auth::generate_hash(&password),
-                create_time: Utc::now().naive_utc(),
+                create_time: Utc::now(),
             })
             .returning(users::id)
             .get_result(&mut conn)

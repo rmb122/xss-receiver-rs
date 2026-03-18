@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct SystemLog {
     pub id: i32,
     pub log: String,
-    pub create_time: chrono::NaiveDateTime,
+    pub create_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Insertable)]

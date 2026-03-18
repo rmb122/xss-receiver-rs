@@ -63,7 +63,7 @@ pub struct Route {
     pub handler: String,
     pub write_log: bool,
     pub comment: String,
-    pub create_time: chrono::NaiveDateTime,
+    pub create_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Insertable, Clone)]

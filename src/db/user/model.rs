@@ -9,7 +9,7 @@ pub struct User {
     pub id: i32,
     pub username: String,
     pub password: String,
-    pub create_time: chrono::NaiveDateTime,
+    pub create_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Insertable)]

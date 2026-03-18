@@ -107,7 +107,7 @@ pub async fn compile_routes(
                 handler: new_route.handler.clone(),
                 write_log: new_route.write_log,
                 comment: new_route.comment.clone(),
-                create_time: Utc::now().naive_utc(),
+                create_time: Utc::now(),
             };
 
             routes.push(new_route);
