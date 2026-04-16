@@ -1,0 +1,43 @@
+{
+  "name": "xss-receiver-rs-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "run-p type-check \"build-only {@}\" --",
+    "preview": "vite preview",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build",
+    "format": "prettier --write --experimental-cli src/"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@mdi/font": "^7.4.47",
+    "@vscode/vscode-languagedetection": "^1.0.23",
+    "axios": "^1.13.5",
+    "monaco-editor": "^0.55.1",
+    "pinia": "^3.0.4",
+    "ua-parser-js": "^2.0.9",
+    "vite-plugin-vuetify": "^2.1.3",
+    "vue": "^3.5.27",
+    "vue-router": "^5.0.1",
+    "vuetify": "^3.11.8"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "^24.0.4",
+    "@types/node": "^24.10.9",
+    "@types/ua-parser-js": "^0.7.39",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "@vue/tsconfig": "^0.8.1",
+    "npm-run-all2": "^8.0.4",
+    "prettier": "3.8.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-vue-devtools": "^8.0.5",
+    "vue-tsc": "^3.2.4"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
