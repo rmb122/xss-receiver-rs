@@ -1,4 +1,21 @@
-# ---- Builder Stage ----
+# ---- Stage 1: Frontend Builder ----
+FROM node:25-slim AS frontend-builder
+
+RUN npm install -g pnpm
+
+WORKDIR /app/frontend
+
+# Copy package manifests first for layer caching
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+
+RUN pnpm install --frozen-lockfile
+
+# Copy frontend source and build
+COPY frontend/ ./
+
+RUN pnpm build
+
+# ---- Stage 2: Rust Builder ----
 FROM rustlang/rust:nightly AS builder
 
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
@@ -28,8 +45,14 @@ RUN mkdir -p /usr/local/cargo && \
 # Create dummy source to trigger dependency compilation
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
 
+# Create dummy frontend/dist so rust-embed compiles during dep caching
+RUN mkdir -p frontend/dist && echo '<html></html>' > frontend/dist/index.html
+
 # Build dependencies only (this layer is cached as long as Cargo.toml/Cargo.lock don't change)
 RUN cargo build --release && rm -rf src target/release/deps/xss_receiver_rs* target/release/xss-receiver-rs
+
+# Copy built frontend from Stage 1
+COPY --from=frontend-builder /app/frontend/dist/ frontend/dist/
 
 # Copy the real source code
 COPY src/ src/
@@ -39,7 +62,7 @@ COPY diesel.toml ./
 # Build the actual project (only recompiles project source, not dependencies)
 RUN cargo build --release
 
-# ---- Runtime Stage ----
+# ---- Stage 3: Runtime ----
 FROM debian:bookworm-slim
 
 RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
