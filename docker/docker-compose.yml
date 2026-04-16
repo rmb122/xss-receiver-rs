@@ -17,6 +17,8 @@ services:
 
   backend:
     image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-backend:latest
+    ports:
+      - 8002:8000
     volumes:
       - ./config.toml:/app/config.toml:ro
       - ./app_data:/app/storage
@@ -24,14 +26,3 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-
-  frontend:
-      image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-frontend:latest
-      ports:
-        - 8002:80
-      environment:
-        ADMIN_PREFIX: bdcd988332ea7d19537d67607d7cb19aa09eb449
-        BACKEND_URL: http://backend:8000
-      depends_on: 
-        - backend
-      restart: unless-stopped
