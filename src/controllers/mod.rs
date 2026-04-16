@@ -17,6 +17,7 @@ use crate::{
 };
 
 mod file;
+mod frontend;
 mod http_log;
 mod index;
 mod route;
@@ -153,6 +154,11 @@ pub fn get_app_router(context: Context) -> Router<()> {
             .url(OPEN_API_URL, api)
             .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
     );
+
+    // add frontend static file routes
+    let admin_router = Router::from(admin_router)
+        .route("/", axum::routing::get(frontend::index))
+        .route("/{*path}", axum::routing::get(frontend::serve));
 
     let router = if prefix.is_empty() || prefix == "/" {
         Router::new().merge(admin_router)
