@@ -19,6 +19,7 @@ pub struct Ip2Region {
 #[derive(Clone, Deserialize)]
 pub struct HttpServer {
     pub listen: String,
+    pub openapi: bool,
     pub jwt_secret: String,
     pub jwt_expire_time: i64,
     pub real_addr_header: String,

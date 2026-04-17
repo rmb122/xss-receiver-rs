@@ -1,17 +1,18 @@
-db_url = "postgres://postgres:postgres@10.255.0.2/postgres"
+db_url = "postgres://postgres:postgres@172.17.0.2/postgres"
 storage_path = "/tmp/"
 
 [http_server]
 listen = "0.0.0.0:8000"
+openapi = true
 jwt_secret = "TEST_VALUE"          # empty means random value
 jwt_expire_time = 259200           # 3 days
 real_addr_header = ""
-admin_prefix = "/super_admin/api/"
+admin_prefix = "/super_admin/"
 max_body_size = 3145728            # 3MB
 
 [dns_server]
 listen = ""
 
 [ip2region]
-ipv4_db = "/home/rmb122/downloads/ip2region_v4.xdb"
-ipv6_db = ""
+ipv4_db = "docker/ip2region_v4.xdb"
+ipv6_db = "docker/ip2region_v6.xdb"

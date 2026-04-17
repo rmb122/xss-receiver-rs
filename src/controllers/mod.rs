@@ -132,7 +132,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(file::merge_parts))
         .routes(routes!(file::download_log_file));
 
-    let (mut admin_router, mut api) = OpenApiRouter::new()
+    let (mut admin_api_router, mut openapi) = OpenApiRouter::new()
         .nest("/user", user_router)
         .nest("/route", route_router)
         .nest("/http_log", http_log_router)
@@ -145,20 +145,23 @@ pub fn get_app_router(context: Context) -> Router<()> {
 
     // 为 OpenAPI 文档添加服务器前缀
     if !prefix.is_empty() && prefix != "/" {
-        api.servers = Some(vec![Server::new(prefix)]);
+        openapi.servers = Some(vec![Server::new(prefix)]);
     }
 
     // add open api
-    admin_router = admin_router.merge(
-        SwaggerUi::new("/swagger-ui")
-            .url(OPEN_API_URL, api)
-            .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
-    );
+    if context.config.http_server.openapi {
+        admin_api_router = admin_api_router.merge(
+            SwaggerUi::new("/swagger-ui")
+                .url(OPEN_API_URL, openapi)
+                .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
+        );
+    }
 
     // add frontend static file routes
-    let admin_router = Router::from(admin_router)
+    let admin_router = Router::new()
         .route("/", axum::routing::get(frontend::index))
-        .route("/{*path}", axum::routing::get(frontend::serve));
+        .route("/{*path}", axum::routing::get(frontend::serve))
+        .nest("/api", admin_api_router);
 
     let router = if prefix.is_empty() || prefix == "/" {
         Router::new().merge(admin_router)
