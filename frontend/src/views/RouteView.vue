@@ -49,6 +49,17 @@
                 ></v-btn>
                 <v-icon class="ml-2 mr-3" color="primary">mdi-folder-outline</v-icon>
                 <span class="font-weight-bold">{{ item.value || '未分类' }}</span>
+                <v-spacer />
+                <v-btn
+                  icon
+                  size="small"
+                  variant="text"
+                  color="primary"
+                  @click="openCreateDialogWithCatalog(item.value)"
+                >
+                  <v-icon>mdi-plus</v-icon>
+                  <v-tooltip activator="parent" location="top">在此分类下新建路由</v-tooltip>
+                </v-btn>
               </div>
             </td>
           </tr>
@@ -309,6 +320,15 @@ function openCreateDialog() {
   isEditing.value = false
   editingId.value = null
   resetForm()
+  dialogVisible.value = true
+  loadHandlerOptions()
+}
+
+function openCreateDialogWithCatalog(catalog: string) {
+  isEditing.value = false
+  editingId.value = null
+  resetForm()
+  form.value.catalog = catalog
   dialogVisible.value = true
   loadHandlerOptions()
 }
