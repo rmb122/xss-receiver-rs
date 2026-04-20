@@ -1,24 +1,31 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
-use crate::storage::validate_path_component;
+/// 目录项类型
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EntryKind {
+    File,
+    Directory,
+}
 
-/// 文件信息
+/// 目录项信息
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct FileInfo {
-    /// 文件名
+pub struct Entry {
+    /// basename（不含路径）
     pub name: String,
-    /// 文件大小（字节）
+    /// 类型
+    pub kind: EntryKind,
+    /// 大小，目录为 0
     pub size: u64,
     /// 最后修改时间（Unix 时间戳，秒）
     pub modified_time: i64,
 }
 
-/// UserStorage - 用于给用户保存文件夹
+/// UserStorage - 嵌套目录的用户文件存储
 #[derive(Clone)]
 pub struct UserStorage {
     path: PathBuf,
@@ -29,195 +36,179 @@ impl UserStorage {
         UserStorage { path }
     }
 
-    /// 递归列出所有目录及其文件
-    pub fn list_all_directory(&self) -> anyhow::Result<HashMap<String, Vec<FileInfo>>> {
-        let mut result = HashMap::new();
-        let entries = fs::read_dir(&self.path)?;
+    /// 词法校验并解析为绝对路径。
+    /// 空字符串 -> root 本身。
+    /// 禁止: 空段、".", "..", 包含 '\0' 的字符串。
+    fn resolve(&self, path: &str) -> anyhow::Result<PathBuf> {
+        if path.contains('\0') {
+            anyhow::bail!("path contains null byte");
+        }
 
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_dir() {
-                if let Some(dir_name) = entry.file_name().to_str() {
-                    let dir_name_string = dir_name.to_string();
+        if path.is_empty() {
+            return Ok(self.path.clone());
+        }
 
-                    // 列出该目录下的所有文件
-                    let files = self.list_directory(&dir_name_string)?;
-                    result.insert(dir_name_string, files);
-                }
+        let mut result = self.path.clone();
+        for segment in path.split(|c| c == '/' || c == '\\') {
+            if segment.is_empty() {
+                anyhow::bail!("empty path segment");
             }
+            if segment == "." || segment == ".." {
+                anyhow::bail!("invalid path segment: {}", segment);
+            }
+            if segment.contains('\0') {
+                anyhow::bail!("path contains null byte");
+            }
+            result.push(segment);
+        }
+        Ok(result)
+    }
+
+    /// 列出 `path` 目录下的直接子项（文件 + 子目录）
+    pub fn list(&self, path: &str) -> anyhow::Result<Vec<Entry>> {
+        let abs = self.resolve(path)?;
+        let mut result = Vec::new();
+
+        for entry in fs::read_dir(&abs)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let name = match entry.file_name().to_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+
+            let kind = if metadata.is_dir() {
+                EntryKind::Directory
+            } else if metadata.is_file() {
+                EntryKind::File
+            } else {
+                continue;
+            };
+
+            let size = if metadata.is_file() { metadata.len() } else { 0 };
+            let modified_time = metadata
+                .modified()?
+                .duration_since(UNIX_EPOCH)?
+                .as_secs() as i64;
+
+            result.push(Entry {
+                name,
+                kind,
+                size,
+                modified_time,
+            });
         }
 
         Ok(result)
     }
 
-    /// 列出指定目录下文件
-    pub fn list_directory(&self, directory: &str) -> anyhow::Result<Vec<FileInfo>> {
-        let mut files = Vec::new();
-
-        let path = self.path.join(directory);
-        let entries = fs::read_dir(&path)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            if file_type.is_file() {
-                if let Some(name) = entry.file_name().to_str() {
-                    // 获取文件元数据
-                    let metadata = entry.metadata()?;
-                    let size = metadata.len();
-                    let modified_time =
-                        metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
-
-                    files.push(FileInfo {
-                        name: name.to_string(),
-                        size,
-                        modified_time,
-                    });
-                }
-            }
-        }
-
-        Ok(files)
+    /// 递归列出所有文件的相对路径
+    pub fn list_all_files(&self) -> anyhow::Result<Vec<String>> {
+        let mut result = Vec::new();
+        self.collect_files(&self.path, &mut Vec::new(), &mut result)?;
+        Ok(result)
     }
 
-    /// 在根目录下创建新目录
-    pub fn new_directory(&self, directory: &str) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-
-        let path = self.path.join(directory);
-
-        // 如果目录已存在，返回错误
-        fs::create_dir(&path)?;
-        Ok(())
-    }
-
-    /// 删除目录或文件
-    /// - filename 为 Some(name) 时，删除指定目录下的指定文件
-    /// - filename 为 None 时，删除指定目录本身
-    pub fn delete(&self, directory: &str, filename: Option<&str>) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-
-        match filename {
-            Some(name) => {
-                validate_path_component(name)?;
-                let path = self.path.join(directory).join(name);
-                fs::remove_file(&path)?;
-            }
-            None => {
-                let path = self.path.join(directory);
-                fs::remove_dir_all(&path)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// 重命名或移动目录/文件
-    /// - `directory` + `filename`：源路径，`filename` 为 `None` 时表示目录本身，`Some(name)` 时表示目录下的文件
-    /// - `new_directory` + `new_filename`：目标路径，语义同上
-    pub fn rename(
+    fn collect_files(
         &self,
-        directory: &str,
-        filename: Option<&str>,
-        new_directory: &str,
-        new_filename: Option<&str>,
+        dir: &std::path::Path,
+        stack: &mut Vec<String>,
+        out: &mut Vec<String>,
     ) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-        validate_path_component(new_directory)?;
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            let name = match entry.file_name().to_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
 
-        if filename.is_none() && new_filename.is_some() {
-            return Err(anyhow::anyhow!("cannot rename a directory to a file path"));
+            if metadata.is_dir() {
+                stack.push(name);
+                self.collect_files(&entry.path(), stack, out)?;
+                stack.pop();
+            } else if metadata.is_file() {
+                let mut parts = stack.clone();
+                parts.push(name);
+                out.push(parts.join("/"));
+            }
         }
-
-        let src_path = match filename {
-            Some(name) => {
-                validate_path_component(name)?;
-                self.path.join(directory).join(name)
-            }
-            None => self.path.join(directory),
-        };
-
-        let dst_path = match new_filename {
-            Some(name) => {
-                validate_path_component(name)?;
-                self.path.join(new_directory).join(name)
-            }
-            None => self.path.join(new_directory),
-        };
-
-        fs::rename(&src_path, &dst_path)?;
         Ok(())
     }
 
-    pub fn get_absolute_path(&self, handler: &str) -> anyhow::Result<String> {
-        let parts = handler.split_once("/");
-        let parts = if let Some(parts) = parts {
-            parts
-        } else {
-            anyhow::bail!("invalid handler path: {}", handler)
-        };
-
-        validate_path_component(parts.0)?;
-        validate_path_component(parts.1)?;
-
-        return Ok(self
-            .path
-            .join(parts.0)
-            .join(parts.1)
-            .to_string_lossy()
-            .to_string());
+    /// 递归创建目录
+    pub fn mkdir(&self, path: &str) -> anyhow::Result<()> {
+        let abs = self.resolve(path)?;
+        fs::create_dir_all(&abs)?;
+        Ok(())
     }
 
-    /// 打开目标文件
-    pub fn open_file(
+    /// 删除文件或目录（目录递归删除）
+    pub fn remove(&self, path: &str) -> anyhow::Result<()> {
+        let abs = self.resolve(path)?;
+        let metadata = fs::metadata(&abs)?;
+        if metadata.is_dir() {
+            fs::remove_dir_all(&abs)?;
+        } else {
+            fs::remove_file(&abs)?;
+        }
+        Ok(())
+    }
+
+    /// 重命名或移动文件/目录。调用方保证 dst 的父目录已存在。
+    pub fn rename(&self, src: &str, dst: &str) -> anyhow::Result<()> {
+        let src_abs = self.resolve(src)?;
+        let dst_abs = self.resolve(dst)?;
+        fs::rename(&src_abs, &dst_abs)?;
+        Ok(())
+    }
+
+    /// 路径是否存在
+    pub fn exists(&self, path: &str) -> bool {
+        match self.resolve(path) {
+            Ok(abs) => abs.exists(),
+            Err(_) => false,
+        }
+    }
+
+    /// 打开文件
+    pub fn open(
         &self,
-        directory: &str,
-        name: &str,
+        path: &str,
         options: &mut fs::OpenOptions,
     ) -> anyhow::Result<File> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
-
-        let content = options.open(path)?;
-        Ok(content)
+        let abs = self.resolve(path)?;
+        let f = options.open(abs)?;
+        Ok(f)
     }
 
     /// 一次性读取文件
-    pub fn read_file(&self, directory: &str, name: &str) -> anyhow::Result<Vec<u8>> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
-
-        let content = fs::read(path)?;
-        Ok(content)
+    pub fn read(&self, path: &str) -> anyhow::Result<Vec<u8>> {
+        let abs = self.resolve(path)?;
+        Ok(fs::read(abs)?)
     }
 
-    /// 写入文件
-    pub fn write_file(&self, directory: &str, name: &str, content: &[u8]) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
-        // 写入文件
-        fs::write(&path, content)?;
+    /// 写入文件（若父目录不存在则报错）
+    pub fn write(&self, path: &str, content: &[u8]) -> anyhow::Result<()> {
+        let abs = self.resolve(path)?;
+        fs::write(&abs, content)?;
         Ok(())
     }
 
-    /// 在文件末尾追加内容（文件不存在则创建）
-    pub fn append_file(&self, directory: &str, name: &str, content: &[u8]) -> anyhow::Result<()> {
-        validate_path_component(directory)?;
-        validate_path_component(name)?;
-
-        let path = self.path.join(directory).join(name);
+    /// 追加内容（文件不存在则创建）
+    pub fn append(&self, path: &str, content: &[u8]) -> anyhow::Result<()> {
+        let abs = self.resolve(path)?;
         let mut file = fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(&path)?;
+            .open(&abs)?;
         file.write_all(content)?;
         Ok(())
+    }
+
+    /// 解析为绝对路径字符串，供 dispatcher 使用
+    pub fn absolute_path(&self, path: &str) -> anyhow::Result<String> {
+        let abs = self.resolve(path)?;
+        Ok(abs.to_string_lossy().to_string())
     }
 }
