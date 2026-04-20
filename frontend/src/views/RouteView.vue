@@ -52,6 +52,7 @@
                 <v-spacer />
                 <v-btn
                   icon
+                  density="comfortable"
                   size="small"
                   variant="text"
                   color="primary"
