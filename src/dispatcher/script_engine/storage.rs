@@ -5,7 +5,7 @@ use boa_engine::{
 };
 use boa_gc::{Finalize, Gc, Trace, empty_trace};
 
-use crate::storage::UserStorage;
+use crate::storage::{EntryKind, UserStorage};
 
 use super::helpers::{check_argument_count, ensure_exists, read_u8_array_from_js_value};
 
@@ -32,9 +32,10 @@ fn get_storage_from_context(ctx: &mut Context) -> JsResult<Gc<UserStorageCell>> 
     )
 }
 
-/// 将 FileInfo 转换为 JS 对象 `{ name, size, modifiedTime }`
-fn file_info_to_js_object(
+/// 将 Entry 转换为 JS 对象 `{ name, kind, size, modifiedTime }`
+fn entry_to_js_object(
     name: &str,
+    kind: EntryKind,
     size: u64,
     modified_time: i64,
     ctx: &mut Context,
@@ -43,6 +44,16 @@ fn file_info_to_js_object(
     obj.set(
         js_string!("name"),
         JsValue::from(js_string!(name)),
+        false,
+        ctx,
+    )?;
+    let kind_str = match kind {
+        EntryKind::File => "file",
+        EntryKind::Directory => "directory",
+    };
+    obj.set(
+        js_string!("kind"),
+        JsValue::from(js_string!(kind_str)),
         false,
         ctx,
     )?;
@@ -65,21 +76,22 @@ pub fn register_storage_to_context(context: &mut Context, user_storage: UserStor
 
     let mut object_builder = ObjectInitializer::new(context);
 
-    // storage.list(directory: string) -> Array<{ name, size, modifiedTime }>
+    // storage.list(path: string) -> Array<{ name, kind, size, modifiedTime }>
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
             check_argument_count(args, 1)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
                 .to_std_string_lossy();
 
             let storage = get_storage_from_context(ctx)?;
-            let files = storage.storage.list_directory(&directory).map_err(|e| {
+            let entries = storage.storage.list(&path).map_err(|e| {
                 JsNativeError::error().with_message(format!("storage.list failed: {}", e))
             })?;
 
             let js_array = JsArray::new(ctx);
-            for (i, file) in files.iter().enumerate() {
-                let obj = file_info_to_js_object(&file.name, file.size, file.modified_time, ctx)?;
+            for (i, entry) in entries.iter().enumerate() {
+                let obj =
+                    entry_to_js_object(&entry.name, entry.kind, entry.size, entry.modified_time, ctx)?;
                 js_array.set(i, obj, false, ctx)?;
             }
             Ok(js_array.into())
@@ -88,195 +100,145 @@ pub fn register_storage_to_context(context: &mut Context, user_storage: UserStor
         1,
     );
 
-    // storage.list_all() -> { [directory: string]: Array<{ name, size, modifiedTime }> }
+    // storage.list_all() -> Array<string>
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, _args, ctx| {
             let storage = get_storage_from_context(ctx)?;
-            let dirs = storage.storage.list_all_directory().map_err(|e| {
+            let files = storage.storage.list_all_files().map_err(|e| {
                 JsNativeError::error().with_message(format!("storage.list_all failed: {}", e))
             })?;
 
-            let result_obj = JsObject::with_null_proto();
-            for (dir_name, files) in &dirs {
-                let js_array = JsArray::new(ctx);
-                for (i, file) in files.iter().enumerate() {
-                    let obj =
-                        file_info_to_js_object(&file.name, file.size, file.modified_time, ctx)?;
-                    js_array.set(i, obj, false, ctx)?;
-                }
-                result_obj.set(js_string!(dir_name.as_str()), js_array, false, ctx)?;
+            let js_array = JsArray::new(ctx);
+            for (i, path) in files.iter().enumerate() {
+                js_array.set(i, JsValue::from(js_string!(path.as_str())), false, ctx)?;
             }
-            Ok(result_obj.into())
+            Ok(js_array.into())
         }),
         js_string!("list_all"),
         0,
     );
 
-    // storage.create_directory(directory: string) -> void
+    // storage.mkdir(path: string) -> undefined
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
             check_argument_count(args, 1)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
                 .to_std_string_lossy();
 
             let storage = get_storage_from_context(ctx)?;
-            storage.storage.new_directory(&directory).map_err(|e| {
-                JsNativeError::error()
-                    .with_message(format!("storage.create_directory failed: {}", e))
+            storage.storage.mkdir(&path).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.mkdir failed: {}", e))
             })?;
             Ok(JsValue::undefined())
         }),
-        js_string!("create_directory"),
+        js_string!("mkdir"),
         1,
     );
 
-    // storage.read_file(directory: string, filename: string) -> Uint8Array
+    // storage.read(path: string) -> Uint8Array
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 2)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
-                .to_std_string_lossy();
-            let filename = ensure_exists(args[1].as_string(), "argument 1 must be a string")?
+            check_argument_count(args, 1)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
                 .to_std_string_lossy();
 
             let storage = get_storage_from_context(ctx)?;
-            let content = storage
-                .storage
-                .read_file(&directory, &filename)
-                .map_err(|e| {
-                    JsNativeError::error().with_message(format!("storage.read_file failed: {}", e))
-                })?;
+            let content = storage.storage.read(&path).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.read failed: {}", e))
+            })?;
 
             let array = JsUint8Array::from_iter(content, ctx)?;
             Ok(array.into())
         }),
-        js_string!("read_file"),
-        2,
-    );
-
-    // storage.write_file(directory: string, filename: string, content: string | ArrayBuffer) -> void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 3)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
-                .to_std_string_lossy();
-            let filename = ensure_exists(args[1].as_string(), "argument 1 must be a string")?
-                .to_std_string_lossy();
-            let content = read_u8_array_from_js_value(&args[2], ctx)?;
-
-            let storage = get_storage_from_context(ctx)?;
-            storage
-                .storage
-                .write_file(&directory, &filename, &content)
-                .map_err(|e| {
-                    JsNativeError::error().with_message(format!("storage.write_file failed: {}", e))
-                })?;
-            Ok(JsValue::undefined())
-        }),
-        js_string!("write_file"),
-        3,
-    );
-
-    // storage.append_file(directory: string, filename: string, content: string | ArrayBuffer) -> void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 3)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
-                .to_std_string_lossy();
-            let filename = ensure_exists(args[1].as_string(), "argument 1 must be a string")?
-                .to_std_string_lossy();
-            let content = read_u8_array_from_js_value(&args[2], ctx)?;
-
-            let storage = get_storage_from_context(ctx)?;
-            storage
-                .storage
-                .append_file(&directory, &filename, &content)
-                .map_err(|e| {
-                    JsNativeError::error()
-                        .with_message(format!("storage.append_file failed: {}", e))
-                })?;
-            Ok(JsValue::undefined())
-        }),
-        js_string!("append_file"),
-        3,
-    );
-
-    // storage.delete(directory: string, filename?: string) -> void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
-                .to_std_string_lossy();
-            // filename 是可选参数
-            let filename_owned: Option<String> = args.get(1).and_then(|v| {
-                if v.is_undefined() || v.is_null() {
-                    None
-                } else {
-                    v.as_string().map(|s| s.to_std_string_lossy())
-                }
-            });
-            let filename_ref = filename_owned.as_deref();
-
-            let storage = get_storage_from_context(ctx)?;
-            storage
-                .storage
-                .delete(&directory, filename_ref)
-                .map_err(|e| {
-                    JsNativeError::error().with_message(format!("storage.delete failed: {}", e))
-                })?;
-            Ok(JsValue::undefined())
-        }),
-        js_string!("delete"),
+        js_string!("read"),
         1,
     );
 
-    // storage.rename(directory, filename | null, new_directory, new_filename | null) -> void
+    // storage.write(path: string, content: string | ArrayBuffer) -> undefined
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 4)?;
-            let directory = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+            check_argument_count(args, 2)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
                 .to_std_string_lossy();
-            let filename_owned: Option<String> = {
-                let v = &args[1];
-                if v.is_null() || v.is_undefined() {
-                    None
-                } else {
-                    Some(
-                        ensure_exists(v.as_string(), "argument 1 must be a string or null")?
-                            .to_std_string_lossy(),
-                    )
-                }
-            };
-            let new_directory = ensure_exists(args[2].as_string(), "argument 2 must be a string")?
-                .to_std_string_lossy();
-            let new_filename_owned: Option<String> = {
-                let v = &args[3];
-                if v.is_null() || v.is_undefined() {
-                    None
-                } else {
-                    Some(
-                        ensure_exists(v.as_string(), "argument 3 must be a string or null")?
-                            .to_std_string_lossy(),
-                    )
-                }
-            };
+            let content = read_u8_array_from_js_value(&args[1], ctx)?;
 
             let storage = get_storage_from_context(ctx)?;
-            storage
-                .storage
-                .rename(
-                    &directory,
-                    filename_owned.as_deref(),
-                    &new_directory,
-                    new_filename_owned.as_deref(),
-                )
-                .map_err(|e| {
-                    JsNativeError::error().with_message(format!("storage.rename failed: {}", e))
-                })?;
+            storage.storage.write(&path, &content).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.write failed: {}", e))
+            })?;
+            Ok(JsValue::undefined())
+        }),
+        js_string!("write"),
+        2,
+    );
+
+    // storage.append(path: string, content: string | ArrayBuffer) -> undefined
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            check_argument_count(args, 2)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+                .to_std_string_lossy();
+            let content = read_u8_array_from_js_value(&args[1], ctx)?;
+
+            let storage = get_storage_from_context(ctx)?;
+            storage.storage.append(&path, &content).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.append failed: {}", e))
+            })?;
+            Ok(JsValue::undefined())
+        }),
+        js_string!("append"),
+        2,
+    );
+
+    // storage.remove(path: string) -> undefined
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            check_argument_count(args, 1)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+                .to_std_string_lossy();
+
+            let storage = get_storage_from_context(ctx)?;
+            storage.storage.remove(&path).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.remove failed: {}", e))
+            })?;
+            Ok(JsValue::undefined())
+        }),
+        js_string!("remove"),
+        1,
+    );
+
+    // storage.rename(src: string, dst: string) -> undefined
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            check_argument_count(args, 2)?;
+            let src = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+                .to_std_string_lossy();
+            let dst = ensure_exists(args[1].as_string(), "argument 1 must be a string")?
+                .to_std_string_lossy();
+
+            let storage = get_storage_from_context(ctx)?;
+            storage.storage.rename(&src, &dst).map_err(|e| {
+                JsNativeError::error().with_message(format!("storage.rename failed: {}", e))
+            })?;
             Ok(JsValue::undefined())
         }),
         js_string!("rename"),
-        4,
+        2,
+    );
+
+    // storage.exists(path: string) -> boolean
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            check_argument_count(args, 1)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+                .to_std_string_lossy();
+
+            let storage = get_storage_from_context(ctx)?;
+            let result = storage.storage.exists(&path);
+            Ok(JsValue::from(result))
+        }),
+        js_string!("exists"),
+        1,
     );
 
     let object = object_builder.build();
