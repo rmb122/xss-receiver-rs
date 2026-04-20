@@ -120,17 +120,16 @@ pub fn get_app_router(context: Context) -> Router<()> {
     let system_log_router = OpenApiRouter::new().routes(routes!(system_log::get_system_logs));
 
     let file_router = OpenApiRouter::new()
-        .routes(routes!(file::list_all_directorie))
-        .routes(routes!(file::create_directory))
-        .routes(routes!(file::delete_directory))
-        .routes(routes!(file::rename_directory))
-        .routes(routes!(file::list_directory))
-        .routes(routes!(file::upload_file))
-        .routes(routes!(file::download_file))
-        .routes(routes!(file::delete_file))
-        .routes(routes!(file::rename_file))
+        .routes(routes!(file::list))
+        .routes(routes!(file::list_all))
+        .routes(routes!(file::mkdir))
+        .routes(routes!(file::remove))
+        .routes(routes!(file::rename))
+        .routes(routes!(file::upload))
         .routes(routes!(file::upload_part))
         .routes(routes!(file::merge_parts))
+        .routes(routes!(file::download))
+        .routes(routes!(file::content))
         .routes(routes!(file::download_log_file));
 
     let (mut admin_api_router, mut openapi) = OpenApiRouter::new()
