@@ -222,7 +222,7 @@ const savingHandler = ref(false)
 const computedHeaders = computed(() => {
   const headers: DataTableHeader[] = [
     { title: 'ID', key: 'id', width: '60px', align: 'center' },
-    { title: '匹配方式', key: 'pattern_kind', width: '180x', align: 'center' },
+    { title: '匹配方式', key: 'pattern_kind', width: '180px', align: 'center' },
     { title: '匹配路径', key: 'pattern' },
     { title: '处理方式', key: 'handler_kind', width: '150px', align: 'center' },
     { title: '处理文件', key: 'handler' },
