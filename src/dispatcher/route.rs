@@ -30,7 +30,7 @@ pub struct Route {
 impl Route {
     pub fn transform(value: db::route::model::Route, storage: &Storage) -> anyhow::Result<Self> {
         // 在转换的时候验证是否是有效的路径, 避免路径穿越
-        let filename = storage.user().get_absolute_path(&value.handler)?;
+        let filename = storage.user().absolute_path(&value.handler)?;
 
         let pattern = match value.pattern_kind {
             db::route::model::PatternKind::PLAIN => {
