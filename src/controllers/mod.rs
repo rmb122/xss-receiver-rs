@@ -4,6 +4,7 @@ use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 
 use jsonwebtoken::Algorithm;
+use log::error;
 use utoipa::openapi::Server;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
@@ -163,13 +164,15 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .route("/{*path}", axum::routing::get(frontend::serve))
         .nest("/api", admin_api_router);
 
-    let router = if prefix.is_empty() || prefix == "/" {
-        Router::new().merge(admin_router)
-    } else {
-        Router::new().nest(&prefix, admin_router)
-    };
+    if prefix.is_empty() || prefix == "/" {
+        error!("prefix must not a root path");
+    }
 
-    return router.fallback(index::index).with_state(context);
+    return Router::new()
+        .route(&format!("{}/", prefix), axum::routing::get(frontend::index))
+        .nest(&prefix, admin_router)
+        .fallback(index::index)
+        .with_state(context);
 }
 
 // https://github.com/tokio-rs/axum/blob/main/examples/anyhow-error-response/src/main.rs
