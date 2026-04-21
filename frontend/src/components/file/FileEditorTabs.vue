@@ -64,7 +64,9 @@
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import * as monaco from 'monaco-editor'
+import { monaco } from '@/monaco'
+import { typescript, type IDisposable } from 'monaco-editor'
+import { scriptEngineTypes } from '@/script-engine-types'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 export interface EditorTab {
@@ -94,6 +96,20 @@ const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 const models = new Map<string, monaco.editor.ITextModel>()
+let extraLibDisposable: IDisposable | null = null
+
+function updateExtraLib(path: string | null) {
+  const needsLib = path !== null && path.endsWith('.xjs')
+  if (needsLib && !extraLibDisposable) {
+    extraLibDisposable = typescript.javascriptDefaults.addExtraLib(
+      scriptEngineTypes,
+      'ts:script-engine.d.ts',
+    )
+  } else if (!needsLib && extraLibDisposable) {
+    extraLibDisposable.dispose()
+    extraLibDisposable = null
+  }
+}
 
 // ----- Tab context menu -----
 const tabMenuOpen = ref(false)
@@ -190,8 +206,10 @@ function isDirty(tab: EditorTab) {
 function getModel(tab: EditorTab): monaco.editor.ITextModel {
   let m = models.get(tab.path)
   if (!m) {
-    const language = inferLanguage(tab.path)
-    m = monaco.editor.createModel(tab.content, language)
+    // 让 Monaco 根据文件名/扩展名自动识别语言（包括 .xjs 映射到 javascript，
+    // 参见 src/monaco.ts 中的 languages.register 调用）
+    const uri = monaco.Uri.file('/' + tab.path)
+    m = monaco.editor.createModel(tab.content, undefined, uri)
     m.onDidChangeContent(() => {
       emit('content-change', { path: tab.path, content: m!.getValue() })
     })
@@ -202,22 +220,6 @@ function getModel(tab: EditorTab): monaco.editor.ITextModel {
   return m
 }
 
-function inferLanguage(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase()
-  const map: Record<string, string> = {
-    js: 'javascript',
-    ts: 'typescript',
-    html: 'html',
-    css: 'css',
-    json: 'json',
-    md: 'markdown',
-    py: 'python',
-    sh: 'shell',
-    txt: 'plaintext',
-  }
-  return ext ? map[ext] ?? 'plaintext' : 'plaintext'
-}
-
 async function mountEditor() {
   if (!props.activeTab) {
     // No active tab - editor DOM is unmounted via v-if; dispose editor instance
@@ -225,6 +227,7 @@ async function mountEditor() {
       editor.dispose()
       editor = null
     }
+    updateExtraLib(null)
     return
   }
   await nextTick()
@@ -242,6 +245,7 @@ async function mountEditor() {
     })
   }
   editor.setModel(getModel(tab))
+  updateExtraLib(tab.path)
 }
 
 async function requestClose(path: string) {
@@ -303,6 +307,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  if (extraLibDisposable) {
+    extraLibDisposable.dispose()
+    extraLibDisposable = null
+  }
   if (editor) {
     editor.dispose()
     editor = null

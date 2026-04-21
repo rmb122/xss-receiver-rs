@@ -82,9 +82,7 @@ onMounted(() => {
     theme: 'vs',
     readOnly: props.readOnly,
     wordWrap: props.wrapLine ? 'on' : 'off',
-    minimap: { enabled: false },
     automaticLayout: true,
-    scrollBeyondLastLine: false,
     fontSize: 14,
   })
 
