@@ -35,12 +35,19 @@ interface UploadFilesMap {
 }
 
 /**
- * 文件信息对象（storage.list / storage.list_all 返回）
+ * 目录项类型
  */
-interface FileInfo {
-  /** 文件或目录名 */
+type EntryKind = 'file' | 'directory';
+
+/**
+ * 目录项信息（storage.list 返回）
+ */
+interface Entry {
+  /** 文件或目录名（basename） */
   readonly name: string;
-  /** 文件大小（字节） */
+  /** 类型："file" 或 "directory" */
+  readonly kind: EntryKind;
+  /** 文件大小（字节），目录为 0 */
   readonly size: number;
   /** 最后修改时间（Unix 时间戳，秒） */
   readonly modifiedTime: number;
@@ -107,73 +114,70 @@ declare const response: {
 /**
  * 用户文件存储对象
  *
- * 提供对用户存储空间的文件操作能力。
- * 所有路径参数不允许包含路径穿越字符。
+ * 提供对用户存储空间的文件操作能力，支持任意层级嵌套目录。
+ * 所有路径参数使用 "/" 分隔层级，不允许包含路径穿越字符 (".", "..")
+ * 或空字符串片段。空字符串表示 root 目录本身。
  */
 declare const storage: {
   /**
-   * 列出指定目录下的所有文件和子项
-   * @param directory 目录名
-   * @returns 文件信息数组
+   * 列出指定目录下的所有直接子项（文件和子目录）
+   * @param path 目录路径；空字符串表示 root
+   * @returns 目录项数组
    */
-  list(directory: string): FileInfo[];
+  list(path: string): Entry[];
 
   /**
-   * 递归列出所有目录及其文件
-   * @returns 以目录名为 key、文件信息数组为 value 的对象
+   * 递归列出所有文件的完整路径
+   * @returns 所有文件相对 root 的路径数组
    */
-  list_all(): Record<string, FileInfo[]>;
+  list_all(): string[];
 
   /**
-   * 在根目录下创建新目录
-   * @param directory 要创建的目录名
+   * 创建目录（若父目录不存在会一并创建）
+   * @param path 要创建的目录路径
    */
-  create_directory(directory: string): void;
+  mkdir(path: string): void;
 
   /**
    * 读取文件内容
-   * @param directory 目录名
-   * @param filename 文件名
+   * @param path 文件完整路径
    * @returns 文件二进制内容
    */
-  read_file(directory: string, filename: string): Uint8Array;
+  read(path: string): Uint8Array;
 
   /**
-   * 写入文件（覆盖已有内容）
-   * @param directory 目录名
-   * @param filename 文件名
+   * 写入文件（覆盖已有内容，父目录必须已存在）
+   * @param path 文件完整路径
    * @param content 要写入的内容，支持字符串或二进制数组
    */
-  write_file(directory: string, filename: string, content: string | Uint8Array): void;
+  write(path: string, content: string | Uint8Array): void;
 
   /**
    * 在文件末尾追加内容（文件不存在则创建）
-   * @param directory 目录名
-   * @param filename 文件名
+   * @param path 文件完整路径
    * @param content 要追加的内容，支持字符串或二进制数组
    */
-  append_file(directory: string, filename: string, content: string | Uint8Array): void;
+  append(path: string, content: string | Uint8Array): void;
 
   /**
-   * 删除文件或目录
-   * @param directory 目录名
-   * @param filename 文件名；省略时删除整个目录
+   * 删除文件或目录（目录递归删除）
+   * @param path 要删除的完整路径
    */
-  delete(directory: string, filename?: string): void;
+  remove(path: string): void;
 
   /**
    * 重命名或移动文件/目录
-   * @param directory 源目录名
-   * @param filename 源文件名；传 null 表示操作目录本身
-   * @param newDirectory 目标目录名
-   * @param newFilename 目标文件名；传 null 表示操作目录本身
+   * @param src 源路径
+   * @param dst 目标路径
    */
-  rename(
-    directory: string,
-    filename: string | null,
-    newDirectory: string,
-    newFilename: string | null,
-  ): void;
+  rename(src: string, dst: string): void;
+
+  /**
+   * 判断路径是否存在
+   * @param path 要检查的路径
+   * @returns 路径存在返回 true，否则返回 false
+   */
+  exists(path: string): boolean;
 };
 
 /**

@@ -124,13 +124,7 @@ export function downloadFile(path: string) {
 
 // ===== 日志文件（不变）=====
 
-export function downloadLogFile(hash: string) {
+export function getDownloadLogFileUrl(hash: string) {
   const token = localStorage.getItem('token')
   return `${BASE_URL}/file/log/${encodeURIComponent(hash)}?authorization=${encodeURIComponent(token || '')}`
-}
-
-export function downloadLogFileBlob(hash: string) {
-  return request.get(`/file/log/${encodeURIComponent(hash)}`, {
-    responseType: 'blob',
-  })
 }

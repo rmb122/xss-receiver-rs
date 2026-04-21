@@ -128,7 +128,7 @@
                     <strong>{{ fieldName }}:</strong>
                     <div v-for="([filename, hash], idx) in files" :key="idx" class="ml-4">
                       {{ filename }} —
-                      <a :href="getDownloadUrl(hash)" target="_blank" class="text-primary">
+                      <a :href="getDownloadLogFileUrl(hash)" target="_blank" class="text-primary">
                         <v-icon size="small">mdi-download</v-icon>
                         下载 ({{ hash }})
                       </a>
@@ -166,7 +166,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { UAParser } from 'ua-parser-js'
 import { getHttpLogs } from '@/api/httpLog'
-import { downloadLogFile } from '@/api/file'
+import { getDownloadLogFileUrl } from '@/api/file'
 import type { HttpLog } from '@/types/httpLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
@@ -374,10 +374,6 @@ function getDataSummary(log: HttpLog): string {
   }
 
   return parts.join(' ')
-}
-
-function getDownloadUrl(hash: string): string {
-  return downloadLogFile(hash)
 }
 
 const copyBody = async (log: HttpLog) => {
