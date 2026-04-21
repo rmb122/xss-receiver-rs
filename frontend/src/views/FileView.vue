@@ -304,8 +304,8 @@ async function onFormSubmit(value: string) {
       }
     }
     formDialog.value = false
-  } catch (e) {
-    showErrorToast((e as Error).message || '操作失败')
+  } catch {
+    // Error toast already shown by request interceptor; keep dialog open so user can retry.
   }
 }
 
