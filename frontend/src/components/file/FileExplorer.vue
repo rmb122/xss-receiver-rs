@@ -57,14 +57,30 @@ async function loadChildren(node: TreeNode) {
     if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1
     return a.name.localeCompare(b.name)
   })
-  node.children = entries.map((e: Entry) => ({
-    path: node.path ? `${node.path}/${e.name}` : e.name,
-    name: e.name,
-    kind: e.kind,
-    size: e.size,
-    loaded: false,
-    expanded: false,
-  }))
+  // Preserve existing children's expanded/loaded state when refreshing,
+  // so saving a file doesn't collapse the tree.
+  const oldChildren = new Map<string, TreeNode>()
+  if (node.children) {
+    for (const c of node.children) {
+      oldChildren.set(c.name, c)
+    }
+  }
+  node.children = entries.map((e: Entry) => {
+    const existing = oldChildren.get(e.name)
+    if (existing && existing.kind === e.kind) {
+      // Same entry kept across refreshes: update size, keep tree state
+      existing.size = e.size
+      return existing
+    }
+    return {
+      path: node.path ? `${node.path}/${e.name}` : e.name,
+      name: e.name,
+      kind: e.kind,
+      size: e.size,
+      loaded: false,
+      expanded: false,
+    }
+  })
   node.loaded = true
 }
 
