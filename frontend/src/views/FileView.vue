@@ -155,7 +155,6 @@ async function saveTab(path: string) {
       savingProgress.value = p
     })
     tab.originalContent = tab.content
-    showSuccessToast('保存成功')
     // refresh parent directory in tree (size/modified_time may have changed)
     const parent = explorer.value?.findParent(path)
     if (parent) await explorer.value?.refreshNode(parent)

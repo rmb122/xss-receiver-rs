@@ -219,7 +219,14 @@ function inferLanguage(path: string): string {
 }
 
 async function mountEditor() {
-  if (!props.activeTab) return
+  if (!props.activeTab) {
+    // No active tab - editor DOM is unmounted via v-if; dispose editor instance
+    if (editor) {
+      editor.dispose()
+      editor = null
+    }
+    return
+  }
   await nextTick()
   if (!editorContainer.value) return
 
