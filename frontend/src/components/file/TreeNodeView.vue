@@ -1,0 +1,77 @@
+<template>
+  <div>
+    <div
+      class="tree-node d-flex align-center"
+      :style="{ paddingLeft: `${indent * 12 + 4}px` }"
+      @click="handleClick"
+      @contextmenu.prevent="handleContextMenu"
+    >
+      <v-icon v-if="node.kind === 'directory'" size="x-small" class="mr-1">
+        {{ node.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
+      </v-icon>
+      <span v-else class="tree-spacer" />
+      <v-icon size="small" class="mr-1" :color="node.kind === 'directory' ? 'amber-darken-2' : 'grey-darken-1'">
+        {{ node.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline' }}
+      </v-icon>
+      <span class="tree-name text-body-2">{{ node.name }}</span>
+    </div>
+    <template v-if="node.kind === 'directory' && node.expanded && node.children">
+      <TreeNodeView
+        v-for="child in node.children"
+        :key="child.path"
+        :node="child"
+        :indent="indent + 1"
+        @toggle="(n) => emit('toggle', n)"
+        @open-file="(p) => emit('open-file', p)"
+        @context-menu="(p) => emit('context-menu', p)"
+      />
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { TreeNode } from './FileExplorer.vue'
+
+const props = defineProps<{
+  node: TreeNode
+  indent: number
+}>()
+
+const emit = defineEmits<{
+  toggle: [node: TreeNode]
+  'open-file': [path: string]
+  'context-menu': [payload: { node: TreeNode; x: number; y: number }]
+}>()
+
+function handleClick() {
+  if (props.node.kind === 'directory') {
+    emit('toggle', props.node)
+  } else {
+    emit('open-file', props.node.path)
+  }
+}
+
+function handleContextMenu(e: MouseEvent) {
+  emit('context-menu', { node: props.node, x: e.clientX, y: e.clientY })
+}
+</script>
+
+<style scoped>
+.tree-node {
+  cursor: pointer;
+  user-select: none;
+  height: 22px;
+}
+.tree-node:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+.tree-spacer {
+  display: inline-block;
+  width: 20px;
+}
+.tree-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
