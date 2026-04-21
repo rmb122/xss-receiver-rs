@@ -188,6 +188,12 @@ impl UserStorage {
         Ok(fs::read(abs)?)
     }
 
+    /// 获取文件元数据
+    pub fn metadata(&self, path: &str) -> anyhow::Result<fs::Metadata> {
+        let abs = self.resolve(path)?;
+        Ok(fs::metadata(abs)?)
+    }
+
     /// 写入文件（若父目录不存在则报错）
     pub fn write(&self, path: &str, content: &[u8]) -> anyhow::Result<()> {
         let abs = self.resolve(path)?;

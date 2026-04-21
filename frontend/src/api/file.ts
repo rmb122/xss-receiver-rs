@@ -100,14 +100,15 @@ export async function chunkedUpload(
 
 // ===== 下载/读取 =====
 
+interface ContentResponse {
+  content: string
+  size: number
+}
+
 export function getFileContent(path: string) {
   return request
-    .get(`/file/content`, {
-      params: { path },
-      responseType: 'text',
-      transformResponse: [(data: unknown) => data],
-    })
-    .then((r) => r.data as unknown as string)
+    .get<ApiResponse<ContentResponse>>(`/file/content`, { params: { path } })
+    .then((r) => r.data.payload!.content)
 }
 
 export function downloadFile(path: string) {
