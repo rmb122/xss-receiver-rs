@@ -9,10 +9,14 @@
           ref="editorTabs"
           :tabs="tabs"
           :active-tab="activeTab"
+          :saving-path="savingPath"
+          :saving-progress="savingProgress"
           @activate="setActive"
           @close="closeTab"
+          @close-many="closeManyTabs"
           @save="saveTab"
           @content-change="onContentChange"
+          @reorder="reorderTab"
         />
       </div>
     </div>
@@ -112,16 +116,43 @@ function forceCloseTab(path: string) {
   }
 }
 
+function closeManyTabs(paths: string[]) {
+  const pathSet = new Set(paths)
+  const wasActiveClosed = activeTab.value !== null && pathSet.has(activeTab.value)
+  const oldActiveIdx = activeTab.value !== null ? tabs.value.findIndex((t) => t.path === activeTab.value) : -1
+  tabs.value = tabs.value.filter((t) => !pathSet.has(t.path))
+  if (wasActiveClosed) {
+    if (tabs.value.length === 0) {
+      activeTab.value = null
+    } else {
+      const newIdx = Math.min(Math.max(0, oldActiveIdx - paths.length + 1), tabs.value.length - 1)
+      activeTab.value = tabs.value[Math.max(0, newIdx)]!.path
+    }
+  }
+}
+
+function reorderTab(payload: { src: string; dst: string }) {
+  const srcIdx = tabs.value.findIndex((t) => t.path === payload.src)
+  const dstIdx = tabs.value.findIndex((t) => t.path === payload.dst)
+  if (srcIdx === -1 || dstIdx === -1) return
+  const [moved] = tabs.value.splice(srcIdx, 1)
+  tabs.value.splice(dstIdx, 0, moved!)
+}
+
+// ----- Save (linear progress bar, editor disabled while saving) -----
+const savingPath = ref<string | null>(null)
+const savingProgress = ref(0)
+
 async function saveTab(path: string) {
   const tab = tabs.value.find((t) => t.path === path)
   if (!tab) return
-  uploadFileName.value = path.split('/').pop() || path
-  uploadProgress.value = 0
-  uploadDialog.value = true
+  if (savingPath.value !== null) return
+  savingPath.value = path
+  savingProgress.value = 0
   try {
     const blob = new Blob([tab.content], { type: 'text/plain' })
     await chunkedUpload(path, blob, (p) => {
-      uploadProgress.value = p
+      savingProgress.value = p
     })
     tab.originalContent = tab.content
     showSuccessToast('保存成功')
@@ -129,7 +160,8 @@ async function saveTab(path: string) {
     const parent = explorer.value?.findParent(path)
     if (parent) await explorer.value?.refreshNode(parent)
   } finally {
-    uploadDialog.value = false
+    savingPath.value = null
+    savingProgress.value = 0
   }
 }
 

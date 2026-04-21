@@ -1,7 +1,7 @@
 <template>
   <div class="file-explorer">
     <div class="explorer-header d-flex align-center px-2 py-1">
-      <span class="text-caption text-uppercase font-weight-bold">EXPLORER</span>
+      <span class="text-caption text-uppercase font-weight-bold">文件管理</span>
       <v-spacer />
       <v-btn icon size="x-small" variant="text" @click="refreshNode(rootNode)">
         <v-icon size="small">mdi-refresh</v-icon>
