@@ -10,8 +10,8 @@
         {{ node.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
       </v-icon>
       <span v-else class="tree-spacer" />
-      <v-icon size="small" class="mr-1" :color="node.kind === 'directory' ? 'amber-darken-2' : 'grey-darken-1'">
-        {{ node.kind === 'directory' ? 'mdi-folder' : 'mdi-file-outline' }}
+      <v-icon size="small" class="mr-1" :color="iconInfo.color">
+        {{ iconInfo.icon }}
       </v-icon>
       <span class="tree-name text-body-2">{{ node.name }}</span>
     </div>
@@ -30,7 +30,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { TreeNode } from './FileExplorer.vue'
+import { fileIcon, folderIcon } from '@/utils/fileIcon'
 
 const props = defineProps<{
   node: TreeNode
@@ -42,6 +44,13 @@ const emit = defineEmits<{
   'open-file': [path: string]
   'context-menu': [payload: { node: TreeNode; x: number; y: number }]
 }>()
+
+const iconInfo = computed(() => {
+  if (props.node.kind === 'directory') {
+    return folderIcon(props.node.expanded)
+  }
+  return fileIcon(props.node.name)
+})
 
 function handleClick() {
   if (props.node.kind === 'directory') {

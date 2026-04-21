@@ -15,7 +15,9 @@
         @drop.prevent="onDrop($event, tab.path)"
         @dragend="onDragEnd"
       >
-        <v-icon size="x-small" class="mr-1">mdi-file-outline</v-icon>
+        <v-icon size="x-small" class="mr-1" :color="tabIcon(tab.path).color">
+          {{ tabIcon(tab.path).icon }}
+        </v-icon>
         <span class="tab-name">{{ basename(tab.path) }}</span>
         <v-icon
           size="x-small"
@@ -67,6 +69,7 @@ import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { monaco } from '@/monaco'
 import { typescript, type IDisposable } from 'monaco-editor'
 import { scriptEngineTypes } from '@/script-engine-types'
+import { fileIcon } from '@/utils/fileIcon'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 export interface EditorTab {
@@ -197,6 +200,10 @@ function onDragEnd() {
 // ----- Helpers -----
 function basename(path: string) {
   return path.split('/').pop() || path
+}
+
+function tabIcon(path: string) {
+  return fileIcon(basename(path))
 }
 
 function isDirty(tab: EditorTab) {
