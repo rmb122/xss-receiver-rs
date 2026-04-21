@@ -192,7 +192,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { getAllRoutes, createRoute, updateRoute, deleteRoute } from '@/api/route'
-import { listAllFiles, getFileContent, chunkedUpload } from '@/api/file'
+import { listAll, getFileContent, chunkedUpload } from '@/api/file'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { formatTime } from '@/utils/format'
 import { expandAllGroups } from '@/utils/table'
@@ -305,13 +305,7 @@ async function fetchRoutes() {
 async function loadHandlerOptions() {
   handlerLoading.value = true
   try {
-    const response = await listAllFiles()
-    const files = response.data.payload
-    if (files) {
-      handlerOptions.value = Object.entries(files).flatMap(([dir, fileList]) =>
-        fileList.map((f) => `${dir}/${f.name}`),
-      )
-    }
+    handlerOptions.value = await listAll()
   } finally {
     handlerLoading.value = false
   }
@@ -383,17 +377,12 @@ async function handleDelete(route: Route) {
 
 // 打开 Handler 文件编辑器
 async function openHandlerEditor(route: Route) {
-  // handler 格式为 "directory/filename"，需要拆分
-  const parts = route.handler.split('/')
-  if (parts.length < 2) {
-    showErrorToast('无效的文件路径')
+  if (!route.handler) {
+    showErrorToast('handler 路径为空')
     return
   }
-
-  const directory = parts.slice(0, -1).join('/')
-  const filename = parts[parts.length - 1]!
-
-  const content = (await getFileContent(directory, filename)).data
+  const filename = route.handler.split('/').pop() || route.handler
+  const content = await getFileContent(route.handler)
 
   editingHandlerFile.value = {
     name: filename,
@@ -407,18 +396,7 @@ async function openHandlerEditor(route: Route) {
 async function handleSaveHandlerFile(content: string) {
   try {
     savingHandler.value = true
-
-    // 拆分路径
-    const parts = editingHandlerFile.value.path.split('/')
-    if (parts.length < 2) {
-      showErrorToast('无效的文件路径')
-      return
-    }
-
-    const directory = parts.slice(0, -1).join('/')
-    const filename = parts[parts.length - 1]!
-
-    await chunkedUpload(directory, filename, new Blob([content], { type: 'text/plain' }))
+    await chunkedUpload(editingHandlerFile.value.path, new Blob([content], { type: 'text/plain' }))
     showSuccessToast('保存成功')
   } finally {
     savingHandler.value = false
@@ -429,18 +407,7 @@ async function handleSaveHandlerFile(content: string) {
 async function handleSaveHandlerFileAndClose(content: string) {
   try {
     savingHandler.value = true
-
-    // 拆分路径
-    const parts = editingHandlerFile.value.path.split('/')
-    if (parts.length < 2) {
-      showErrorToast('无效的文件路径')
-      return
-    }
-
-    const directory = parts.slice(0, -1).join('/')
-    const filename = parts[parts.length - 1]!
-
-    await chunkedUpload(directory, filename, new Blob([content], { type: 'text/plain' }))
+    await chunkedUpload(editingHandlerFile.value.path, new Blob([content], { type: 'text/plain' }))
     showSuccessToast('保存成功')
     handlerEditorDialog.value = false
   } finally {
