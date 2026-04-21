@@ -87,10 +87,18 @@ function onContentChange(payload: { path: string; content: string }) {
   if (t) t.content = payload.content
 }
 
+const MAX_EDIT_FILE_SIZE = 3 * 1024 * 1024 // 3 MB
+
 async function openFile(path: string) {
   const existing = tabs.value.find((t) => t.path === path)
   if (existing) {
     activeTab.value = path
+    return
+  }
+  // Check file size before fetching content
+  const node = explorer.value?.findNode(path)
+  if (node && node.size > MAX_EDIT_FILE_SIZE) {
+    showErrorToast(`文件过大 (${(node.size / 1024 / 1024).toFixed(2)} MB), 无法在线编辑, 请下载后查看`)
     return
   }
   const content = await getFileContent(path)

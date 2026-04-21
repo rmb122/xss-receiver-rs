@@ -30,6 +30,7 @@ export interface TreeNode {
   path: string // '' for root, 'a/b/c' otherwise
   name: string
   kind: 'file' | 'directory'
+  size: number
   loaded: boolean
   expanded: boolean
   children?: TreeNode[]
@@ -44,6 +45,7 @@ const rootNode = ref<TreeNode>({
   path: '',
   name: '/',
   kind: 'directory',
+  size: 0,
   loaded: false,
   expanded: true,
 })
@@ -59,6 +61,7 @@ async function loadChildren(node: TreeNode) {
     path: node.path ? `${node.path}/${e.name}` : e.name,
     name: e.name,
     kind: e.kind,
+    size: e.size,
     loaded: false,
     expanded: false,
   }))
