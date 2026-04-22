@@ -93,9 +93,19 @@ declare const request: {
 declare const response: {
   /**
    * 追加数据到响应体。可多次调用，数据会依次拼接。
+   * 与 sendFile() 互斥：如果已调用过 sendFile()，再调用 send() 会抛出异常。
    * @param data 响应体数据，支持字符串或二进制数组
    */
   send(data: string | Uint8Array): void;
+
+  /**
+   * 直接使用文件作为响应体，后端会流式读取文件内容。
+   * 只能调用一次，且与 send() 互斥：
+   * - 如果已有 send() 写入的内容，调用 sendFile() 会抛出异常。
+   * - 重复调用 sendFile() 会抛出异常。
+   * @param path 用户存储中的文件路径（支持嵌套）
+   */
+  sendFile(path: string): void;
 
   /**
    * 设置 HTTP 响应状态码

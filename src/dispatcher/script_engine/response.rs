@@ -1,7 +1,7 @@
 use boa_engine::JsValue;
 use boa_engine::object::builtins::JsArray;
 use boa_engine::{
-    Context, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
+    Context, JsError, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
 };
 use boa_gc::Gc;
 use boa_gc::{Finalize, Trace, empty_trace};
@@ -16,6 +16,7 @@ use super::helpers::{
 pub struct Response {
     pub status_code: u16,
     pub headers: HashMap<String, Vec<String>>,
+    pub body_file: Option<String>,
     pub body: Vec<u8>,
 }
 
@@ -24,6 +25,7 @@ impl Response {
         Response {
             status_code: 200,
             headers: HashMap::new(),
+            body_file: None,
             body: Vec::new(),
         }
     }
@@ -66,11 +68,43 @@ pub fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
 
             let data = read_u8_array_from_js_value(&args[0], ctx)?;
             let mut response = get_response_from_context(ctx)?;
+            if response.body_file.is_some() {
+                return Err(JsError::from_opaque(
+                    js_string!("response.send() is mutually exclusive with sendFile()").into(),
+                ));
+            }
             response.body.extend(data);
 
             Ok(JsValue::undefined())
         }),
         js_string!("send"),
+        1,
+    );
+
+    // response.sendFile(path: String): void
+    // 只能调用一次, 且与 send() 互斥
+    object_builder.function(
+        NativeFunction::from_copy_closure(move |_this, args, ctx| {
+            check_argument_count(args, 1)?;
+
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
+                .to_std_string_lossy();
+            let mut response = get_response_from_context(ctx)?;
+            if response.body_file.is_some() {
+                return Err(JsError::from_opaque(
+                    js_string!("response.sendFile() can only be called once").into(),
+                ));
+            }
+            if !response.body.is_empty() {
+                return Err(JsError::from_opaque(
+                    js_string!("response.sendFile() is mutually exclusive with send()").into(),
+                ));
+            }
+            response.body_file = Some(path);
+
+            Ok(JsValue::undefined())
+        }),
+        js_string!("sendFile"),
         1,
     );
 
