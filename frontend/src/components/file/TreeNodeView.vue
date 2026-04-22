@@ -72,7 +72,7 @@ function handleContextMenu(e: MouseEvent) {
 .tree-node {
   cursor: pointer;
   user-select: none;
-  height: 22px;
+  height: 26px;
   position: relative;
 }
 .tree-node:hover {

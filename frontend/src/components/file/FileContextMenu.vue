@@ -79,7 +79,7 @@ const items = computed<Array<{ key: ContextMenuAction; label: string; icon: stri
       return [
         { key: 'new-file', label: '新建文件', icon: 'mdi-file-plus' },
         { key: 'new-dir', label: '新建子目录', icon: 'mdi-folder-plus' },
-        { key: 'rename', label: '重命名', icon: 'mdi-rename' },
+        { key: 'rename', label: '移动', icon: 'mdi-rename' },
         { key: 'upload', label: '上传到此目录', icon: 'mdi-upload' },
         { key: 'copy-path', label: '复制路径', icon: 'mdi-content-copy' },
         { key: 'delete', label: '删除', icon: 'mdi-delete' },
@@ -89,7 +89,7 @@ const items = computed<Array<{ key: ContextMenuAction; label: string; icon: stri
       return [
         { key: 'open', label: '打开编辑', icon: 'mdi-file-edit' },
         { key: 'download', label: '下载', icon: 'mdi-download' },
-        { key: 'rename', label: '重命名', icon: 'mdi-rename' },
+        { key: 'rename', label: '移动', icon: 'mdi-rename' },
         { key: 'copy-path', label: '复制路径', icon: 'mdi-content-copy' },
         { key: 'delete', label: '删除', icon: 'mdi-delete' },
       ]
