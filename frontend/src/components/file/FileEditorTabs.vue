@@ -25,6 +25,7 @@
           {{ tabIcon(tab.path).icon }}
         </v-icon>
         <span class="tab-name">{{ basename(tab.path) }}</span>
+        <span v-if="tabHint(tab.path)" class="tab-hint ml-1">{{ tabHint(tab.path) }}</span>
         <v-icon size="x-small" class="tab-close ml-2" @click.stop="requestClose(tab.path)">
           {{ isDirty(tab) ? 'mdi-circle-medium' : 'mdi-close' }}
         </v-icon>
@@ -254,6 +255,50 @@ function isDirty(tab: EditorTab) {
   return tab.content !== tab.originalContent
 }
 
+// Map: path -> disambiguating hint to show next to the basename.
+// Only populated for tabs whose basename collides with another open tab.
+// The hint is the shortest suffix of the parent directory segments that
+// uniquely identifies the file among collisions.
+const tabHints = computed<Record<string, string>>(() => {
+  const hints: Record<string, string> = {}
+  const byName = new Map<string, string[]>()
+  for (const t of props.tabs) {
+    const name = basename(t.path)
+    const list = byName.get(name)
+    if (list) list.push(t.path)
+    else byName.set(name, [t.path])
+  }
+  for (const [, paths] of byName) {
+    if (paths.length < 2) continue
+    // Each collision group gets its own set of disambiguation hints.
+    // Strategy: for each path, walk its parent segments from the right,
+    // until the chosen suffix is unique within the group.
+    const segs = paths.map((p) => p.split('/').slice(0, -1)) // drop basename
+    for (let i = 0; i < paths.length; i++) {
+      const mySegs = segs[i]!
+      let depth = 1
+      // Increase depth until our rightmost `depth` parent segments are unique
+      // in the group (or we've consumed all parents).
+      while (depth <= mySegs.length) {
+        const mySuffix = mySegs.slice(-depth).join('/')
+        const collides = segs.some((other, j) => {
+          if (j === i) return false
+          return other.slice(-depth).join('/') === mySuffix
+        })
+        if (!collides) break
+        depth++
+      }
+      const suffix = mySegs.slice(-depth).join('/')
+      hints[paths[i]!] = suffix || '/'
+    }
+  }
+  return hints
+})
+
+function tabHint(path: string): string | null {
+  return tabHints.value[path] ?? null
+}
+
 function getModel(tab: EditorTab): monaco.editor.ITextModel {
   let m = models.get(tab.path)
   if (!m) {
@@ -428,6 +473,14 @@ defineExpose({ requestClose })
 }
 .tab-name {
   font-size: 13px;
+}
+.tab-hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
 }
 .tab-close {
   opacity: 0.6;
