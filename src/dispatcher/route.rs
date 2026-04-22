@@ -1,6 +1,7 @@
 use std::{error::Error, fmt::Display, time::Duration};
 
 use async_trait::async_trait;
+use axum::response;
 use axum::{body::Body, http::Response};
 use boa_engine::{Context, JsError, Script, Source};
 use tokio::task;
@@ -162,9 +163,19 @@ impl RouteHandler for ScriptHandler {
             }
         }
 
+        let axum_response = match response.body_file {
+            Some(body_file) => {
+                builder.body(Body::from_stream(ReaderStream::with_capacity(
+                    tokio::fs::File::open(&body_file).await?,
+                    10240, // 1M
+                )))?
+            }
+            None => builder.body(Body::from(response.body))?,
+        };
+
         Ok((
             result.unwrap_or_else(|| serde_json::Value::Null),
-            builder.body(Body::from(response.body))?,
+            axum_response,
         ))
     }
 }

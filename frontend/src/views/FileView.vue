@@ -212,6 +212,18 @@ async function onMenuSelect(action: ContextMenuAction) {
     case 'download':
       if (node.kind === 'file') downloadFile(node.path)
       break
+    case 'copy-path':
+      await copyPath(node.path)
+      break
+  }
+}
+
+async function copyPath(path: string) {
+  try {
+    await navigator.clipboard.writeText(path)
+    showSuccessToast('路径已复制到剪贴板')
+  } catch {
+    showErrorToast('无法访问剪贴板')
   }
 }
 
