@@ -1,9 +1,14 @@
 <template>
   <v-container fluid class="file-view-container pa-0">
-    <div class="file-view-layout">
-      <div class="explorer-pane">
+    <div ref="layoutEl" class="file-view-layout">
+      <div class="explorer-pane" :style="{ width: explorerWidth + 'px' }">
         <FileExplorer ref="explorer" @open-file="openFile" @context-menu="onContextMenu" />
       </div>
+      <div
+        class="pane-splitter"
+        :class="{ 'is-dragging': isDragging }"
+        @mousedown="onSplitterMouseDown"
+      ></div>
       <div class="editor-pane">
         <FileEditorTabs
           ref="editorTabs"
@@ -52,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 import FileExplorer, { type TreeNode } from '@/components/file/FileExplorer.vue'
 import FileContextMenu, { type ContextMenuAction, type ContextMenuTarget } from '@/components/file/FileContextMenu.vue'
 import FileEditorTabs, { type EditorTab } from '@/components/file/FileEditorTabs.vue'
@@ -73,6 +78,49 @@ const explorer = ref<InstanceType<typeof FileExplorer>>()
 const editorTabs = ref<InstanceType<typeof FileEditorTabs>>()
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const layoutEl = ref<HTMLElement | null>(null)
+
+// ----- Resizable splitter between explorer & editor -----
+const EXPLORER_MIN = 160
+const EXPLORER_MAX_PADDING = 200 // keep at least this many px for the editor pane
+const STORAGE_KEY = 'file-view-explorer-width'
+const initialWidth = Number(localStorage.getItem(STORAGE_KEY))
+const explorerWidth = ref<number>(
+  Number.isFinite(initialWidth) && initialWidth >= EXPLORER_MIN ? initialWidth : 280,
+)
+const isDragging = ref(false)
+let dragStartX = 0
+let dragStartWidth = 0
+
+function onSplitterMouseDown(e: MouseEvent) {
+  e.preventDefault()
+  isDragging.value = true
+  dragStartX = e.clientX
+  dragStartWidth = explorerWidth.value
+  document.addEventListener('mousemove', onSplitterMouseMove)
+  document.addEventListener('mouseup', onSplitterMouseUp)
+}
+
+function onSplitterMouseMove(e: MouseEvent) {
+  if (!isDragging.value || !layoutEl.value) return
+  const totalWidth = layoutEl.value.clientWidth
+  const maxWidth = Math.max(EXPLORER_MIN, totalWidth - EXPLORER_MAX_PADDING)
+  const next = Math.min(maxWidth, Math.max(EXPLORER_MIN, dragStartWidth + (e.clientX - dragStartX)))
+  explorerWidth.value = next
+}
+
+function onSplitterMouseUp() {
+  if (!isDragging.value) return
+  isDragging.value = false
+  localStorage.setItem(STORAGE_KEY, String(explorerWidth.value))
+  document.removeEventListener('mousemove', onSplitterMouseMove)
+  document.removeEventListener('mouseup', onSplitterMouseUp)
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onSplitterMouseMove)
+  document.removeEventListener('mouseup', onSplitterMouseUp)
+})
 
 // ----- Tabs -----
 const tabs = ref<EditorTab[]>([])
@@ -376,9 +424,29 @@ function cancelUpload() {
   height: 100%;
 }
 .explorer-pane {
-  width: 280px;
-  min-width: 200px;
+  min-width: 160px;
   flex-shrink: 0;
+}
+.pane-splitter {
+  flex: 0 0 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  position: relative;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+.pane-splitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.pane-splitter:hover,
+.pane-splitter.is-dragging {
+  background-color: rgba(25, 118, 210, 0.18);
 }
 .editor-pane {
   flex: 1;
