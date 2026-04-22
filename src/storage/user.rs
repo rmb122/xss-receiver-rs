@@ -38,20 +38,21 @@ impl UserStorage {
 
     /// 词法校验并解析为绝对路径。
     /// 空字符串 -> root 本身。
-    /// 禁止: 空段、".", "..", 包含 '\0' 的字符串。
+    /// 禁止: ".", "..", 包含 '\0' 的字符串。
     fn resolve(&self, path: &str) -> anyhow::Result<PathBuf> {
         if path.contains('\0') {
             anyhow::bail!("path contains null byte");
         }
 
+        let mut result = self.path.clone();
         if path.is_empty() {
-            return Ok(self.path.clone());
+            return Ok(result);
         }
 
-        let mut result = self.path.clone();
         for segment in path.split(|c| c == '/' || c == '\\') {
             if segment.is_empty() {
-                anyhow::bail!("empty path segment");
+                // do noting
+                continue;
             }
             if segment == "." || segment == ".." {
                 anyhow::bail!("invalid path segment: {}", segment);
@@ -147,6 +148,10 @@ impl UserStorage {
     /// 删除文件或目录（目录递归删除）
     pub fn remove(&self, path: &str) -> anyhow::Result<()> {
         let abs = self.resolve(path)?;
+        if abs == self.path {
+            return Err(anyhow::anyhow!("can't remove root directory"));
+        }
+
         let metadata = fs::metadata(&abs)?;
         if metadata.is_dir() {
             fs::remove_dir_all(&abs)?;
