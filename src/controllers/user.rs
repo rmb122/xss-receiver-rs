@@ -59,9 +59,10 @@ pub async fn login(
             let _ = insert_system_log(
                 &mut conn,
                 &format!(
-                    "user {} logged from {}",
+                    "user {} logged from {} ({})",
                     &user.username,
-                    client_addr.to_string()
+                    client_addr.to_string(),
+                    ctx.locator.locate(&client_addr.ip().to_string()),
                 ),
             )
             .await;
