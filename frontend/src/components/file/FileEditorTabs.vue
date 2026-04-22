@@ -5,13 +5,19 @@
         v-for="tab in tabs"
         :key="tab.path"
         class="tab"
-        :class="{ active: tab.path === activeTab, dragging: dragPath === tab.path }"
+        :class="{
+          active: tab.path === activeTab,
+          dragging: dragPath === tab.path,
+          'drop-before': dragOverPath === tab.path && dragOverSide === 'before',
+          'drop-after': dragOverPath === tab.path && dragOverSide === 'after',
+        }"
         draggable="true"
         @click="emit('activate', tab.path)"
         @auxclick="onAuxClick($event, tab.path)"
         @contextmenu.prevent="onContextMenu($event, tab.path)"
         @dragstart="onDragStart($event, tab.path)"
-        @dragover.prevent
+        @dragover.prevent="onDragOver($event, tab.path)"
+        @dragleave="onDragLeave(tab.path)"
         @drop.prevent="onDrop($event, tab.path)"
         @dragend="onDragEnd"
       >
@@ -87,7 +93,7 @@ const emit = defineEmits<{
   'close-many': [paths: string[]]
   save: [path: string]
   'content-change': [payload: { path: string; content: string }]
-  reorder: [payload: { src: string; dst: string }]
+  reorder: [payload: { src: string; dstIndex: number }]
 }>()
 
 const editorContainer = ref<HTMLElement | null>(null)
@@ -173,6 +179,8 @@ function onAuxClick(e: MouseEvent, path: string) {
 
 // ----- Drag-and-drop reorder -----
 const dragPath = ref<string | null>(null)
+const dragOverPath = ref<string | null>(null)
+const dragOverSide = ref<'before' | 'after' | null>(null)
 
 function onDragStart(e: DragEvent, path: string) {
   dragPath.value = path
@@ -182,15 +190,55 @@ function onDragStart(e: DragEvent, path: string) {
   }
 }
 
+function onDragOver(e: DragEvent, path: string) {
+  if (!dragPath.value || dragPath.value === path) {
+    dragOverPath.value = null
+    dragOverSide.value = null
+    return
+  }
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  // Determine whether cursor is on the left half or right half of the target tab
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const side: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
+  dragOverPath.value = path
+  dragOverSide.value = side
+}
+
+function onDragLeave(path: string) {
+  // Only clear if we're still showing this tab's indicator;
+  // dragover on a sibling will overwrite it immediately.
+  if (dragOverPath.value === path) {
+    dragOverPath.value = null
+    dragOverSide.value = null
+  }
+}
+
 function onDrop(_e: DragEvent, dstPath: string) {
   const src = dragPath.value
+  const side = dragOverSide.value
   dragPath.value = null
+  dragOverPath.value = null
+  dragOverSide.value = null
   if (!src || src === dstPath) return
-  emit('reorder', { src, dst: dstPath })
+
+  // Emit the target insertion index in the ORIGINAL list (before removing src).
+  // The parent implements the reorder by removing src first, then inserting it
+  // at an index adjusted for the removed slot.
+  const tabs = props.tabs
+  const srcIdx = tabs.findIndex((t) => t.path === src)
+  const dstIdx = tabs.findIndex((t) => t.path === dstPath)
+  if (srcIdx === -1 || dstIdx === -1) return
+
+  const dstIndex = side === 'after' ? dstIdx + 1 : dstIdx
+  // No-op: dropping adjacent to itself
+  if (dstIndex === srcIdx || dstIndex === srcIdx + 1) return
+  emit('reorder', { src, dstIndex })
 }
 
 function onDragEnd() {
   dragPath.value = null
+  dragOverPath.value = null
+  dragOverSide.value = null
 }
 
 // ----- Helpers -----
@@ -352,6 +400,7 @@ defineExpose({ requestClose })
   user-select: none;
   background-color: #ececec;
   white-space: nowrap;
+  position: relative;
 }
 .tab.active {
   background-color: #ffffff;
@@ -359,6 +408,23 @@ defineExpose({ requestClose })
 }
 .tab.dragging {
   opacity: 0.5;
+}
+.tab.drop-before::before,
+.tab.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #1976d2;
+  pointer-events: none;
+  z-index: 1;
+}
+.tab.drop-before::before {
+  left: -1px;
+}
+.tab.drop-after::after {
+  right: -1px;
 }
 .tab-name {
   font-size: 13px;

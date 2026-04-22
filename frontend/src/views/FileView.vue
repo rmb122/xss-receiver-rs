@@ -181,12 +181,15 @@ function closeManyTabs(paths: string[]) {
   }
 }
 
-function reorderTab(payload: { src: string; dst: string }) {
+function reorderTab(payload: { src: string; dstIndex: number }) {
   const srcIdx = tabs.value.findIndex((t) => t.path === payload.src)
-  const dstIdx = tabs.value.findIndex((t) => t.path === payload.dst)
-  if (srcIdx === -1 || dstIdx === -1) return
+  if (srcIdx === -1) return
+  // Adjust the target index for the upcoming removal of src.
+  let insertIdx = payload.dstIndex
+  if (srcIdx < insertIdx) insertIdx -= 1
+  insertIdx = Math.max(0, Math.min(insertIdx, tabs.value.length - 1))
   const [moved] = tabs.value.splice(srcIdx, 1)
-  tabs.value.splice(dstIdx, 0, moved!)
+  tabs.value.splice(insertIdx, 0, moved!)
 }
 
 // ----- Save (linear progress bar, editor disabled while saving) -----
