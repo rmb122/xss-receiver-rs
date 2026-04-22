@@ -25,7 +25,7 @@ unsafe impl Trace for UserStorageCell {
 unsafe impl Sync for UserStorageCell {}
 
 /// 从 boa 上下文中取出 UserStorage
-fn get_storage_from_context(ctx: &mut Context) -> JsResult<Gc<UserStorageCell>> {
+pub(crate) fn get_storage_from_context(ctx: &mut Context) -> JsResult<Gc<UserStorageCell>> {
     ensure_exists(
         ctx.get_data::<Gc<UserStorageCell>>().cloned(),
         "failed to get storage from context",
@@ -90,8 +90,13 @@ pub fn register_storage_to_context(context: &mut Context, user_storage: UserStor
 
             let js_array = JsArray::new(ctx);
             for (i, entry) in entries.iter().enumerate() {
-                let obj =
-                    entry_to_js_object(&entry.name, entry.kind, entry.size, entry.modified_time, ctx)?;
+                let obj = entry_to_js_object(
+                    &entry.name,
+                    entry.kind,
+                    entry.size,
+                    entry.modified_time,
+                    ctx,
+                )?;
                 js_array.set(i, obj, false, ctx)?;
             }
             Ok(js_array.into())

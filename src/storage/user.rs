@@ -85,11 +85,12 @@ impl UserStorage {
                 continue;
             };
 
-            let size = if metadata.is_file() { metadata.len() } else { 0 };
-            let modified_time = metadata
-                .modified()?
-                .duration_since(UNIX_EPOCH)?
-                .as_secs() as i64;
+            let size = if metadata.is_file() {
+                metadata.len()
+            } else {
+                0
+            };
+            let modified_time = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
 
             result.push(Entry {
                 name,
@@ -172,11 +173,7 @@ impl UserStorage {
     }
 
     /// 打开文件
-    pub fn open(
-        &self,
-        path: &str,
-        options: &mut fs::OpenOptions,
-    ) -> anyhow::Result<File> {
+    pub fn open(&self, path: &str, options: &mut fs::OpenOptions) -> anyhow::Result<File> {
         let abs = self.resolve(path)?;
         let f = options.open(abs)?;
         Ok(f)

@@ -258,9 +258,7 @@ pub async fn download(
         .open(&q.path, OpenOptions::new().read(true));
 
     match file_handle {
-        Ok(f) => {
-            make_file_response(File::from_std(f), basename(&q.path)).into_response()
-        }
+        Ok(f) => make_file_response(File::from_std(f), basename(&q.path)).into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -302,8 +300,8 @@ pub async fn content(
         .into());
     }
     let bytes = ctx.storage.user().read(&q.path)?;
-    let content = String::from_utf8(bytes)
-        .map_err(|e| anyhow::anyhow!("file is not valid UTF-8: {}", e))?;
+    let content =
+        String::from_utf8(bytes).map_err(|e| anyhow::anyhow!("file is not valid UTF-8: {}", e))?;
     Ok(Response::ok().payload(ContentResponse { content, size }))
 }
 

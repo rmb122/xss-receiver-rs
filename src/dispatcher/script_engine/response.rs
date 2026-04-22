@@ -10,6 +10,7 @@ use std::{cell::RefCell, collections::HashMap};
 use super::helpers::{
     check_argument_count, ensure_exists, get_response_from_context, read_u8_array_from_js_value,
 };
+use super::storage::get_storage_from_context;
 
 /// Response 数据结构
 #[derive(Clone)]
@@ -89,6 +90,25 @@ pub fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
 
             let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
                 .to_std_string_lossy();
+
+            // 通过 storage 的 resolve 校验路径并拿到绝对路径 (同时验证文件存在)
+            let storage = get_storage_from_context(ctx)?;
+            let abs_path = storage.storage.absolute_path(&path).map_err(|e| {
+                JsError::from_opaque(
+                    js_string!(format!("response.sendFile() invalid path: {}", e)).into(),
+                )
+            })?;
+            let metadata = storage.storage.metadata(&path).map_err(|e| {
+                JsError::from_opaque(
+                    js_string!(format!("response.sendFile() cannot access file: {}", e)).into(),
+                )
+            })?;
+            if !metadata.is_file() {
+                return Err(JsError::from_opaque(
+                    js_string!("response.sendFile() path is not a regular file").into(),
+                ));
+            }
+
             let mut response = get_response_from_context(ctx)?;
             if response.body_file.is_some() {
                 return Err(JsError::from_opaque(
@@ -100,7 +120,7 @@ pub fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
                     js_string!("response.sendFile() is mutually exclusive with send()").into(),
                 ));
             }
-            response.body_file = Some(path);
+            response.body_file = Some(abs_path);
 
             Ok(JsValue::undefined())
         }),
