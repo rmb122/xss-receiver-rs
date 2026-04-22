@@ -140,7 +140,7 @@ declare const storage: {
    * 递归列出所有文件的完整路径
    * @returns 所有文件相对 root 的路径数组
    */
-  list_all(): string[];
+  listAll(): string[];
 
   /**
    * 创建目录（若父目录不存在会一并创建）

@@ -105,12 +105,12 @@ pub fn register_storage_to_context(context: &mut Context, user_storage: UserStor
         1,
     );
 
-    // storage.list_all() -> Array<string>
+    // storage.listAll() -> Array<string>
     object_builder.function(
         NativeFunction::from_copy_closure(move |_this, _args, ctx| {
             let storage = get_storage_from_context(ctx)?;
             let files = storage.storage.list_all_files().map_err(|e| {
-                JsNativeError::error().with_message(format!("storage.list_all failed: {}", e))
+                JsNativeError::error().with_message(format!("storage.listAll failed: {}", e))
             })?;
 
             let js_array = JsArray::new(ctx);
@@ -119,7 +119,7 @@ pub fn register_storage_to_context(context: &mut Context, user_storage: UserStor
             }
             Ok(js_array.into())
         }),
-        js_string!("list_all"),
+        js_string!("listAll"),
         0,
     );
 

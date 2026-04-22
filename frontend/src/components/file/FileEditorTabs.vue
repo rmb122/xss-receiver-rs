@@ -19,11 +19,7 @@
           {{ tabIcon(tab.path).icon }}
         </v-icon>
         <span class="tab-name">{{ basename(tab.path) }}</span>
-        <v-icon
-          size="x-small"
-          class="tab-close ml-2"
-          @click.stop="requestClose(tab.path)"
-        >
+        <v-icon size="x-small" class="tab-close ml-2" @click.stop="requestClose(tab.path)">
           {{ isDirty(tab) ? 'mdi-circle-medium' : 'mdi-close' }}
         </v-icon>
       </div>
@@ -42,16 +38,16 @@
       <div v-else ref="editorContainer" class="editor-container"></div>
     </div>
 
-    <v-menu
-      v-model="tabMenuOpen"
-      :target="[tabMenuX, tabMenuY]"
-      close-on-content-click
-    >
+    <v-menu v-model="tabMenuOpen" :target="[tabMenuX, tabMenuY]" close-on-content-click>
       <v-list density="compact" min-width="180">
         <v-list-item prepend-icon="mdi-close" @click="contextClose">
           <v-list-item-title>关闭</v-list-item-title>
         </v-list-item>
-        <v-list-item prepend-icon="mdi-chevron-right" @click="contextCloseRight" :disabled="!hasTabsToRight">
+        <v-list-item
+          prepend-icon="mdi-chevron-right"
+          @click="contextCloseRight"
+          :disabled="!hasTabsToRight"
+        >
           <v-list-item-title>关闭右侧</v-list-item-title>
         </v-list-item>
         <v-list-item prepend-icon="mdi-close-box-multiple" @click="contextCloseAll">
@@ -247,8 +243,10 @@ async function mountEditor() {
     editor = monaco.editor.create(editorContainer.value, {
       automaticLayout: true,
       theme: 'vs',
-      tabSize: 2,
       fontSize: 14,
+      padding: {
+        top: 3,
+      },
     })
   }
   editor.setModel(getModel(tab))
@@ -288,7 +286,9 @@ watch(
   () => {
     void mountEditor()
     if (editor) {
-      editor.updateOptions({ readOnly: props.savingPath !== null && props.savingPath === props.activeTab })
+      editor.updateOptions({
+        readOnly: props.savingPath !== null && props.savingPath === props.activeTab,
+      })
     }
   },
 )

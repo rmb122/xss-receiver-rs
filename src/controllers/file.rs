@@ -100,7 +100,7 @@ pub async fn list(
 /// 递归列出所有文件
 #[utoipa::path(
     post,
-    path = "/listAll",
+    path = "/list_all",
     responses((status = OK, body = Response<ListAllResponse>))
 )]
 pub async fn list_all(

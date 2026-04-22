@@ -25,7 +25,7 @@ export function listDir(path: string) {
 
 export function listAll() {
   return request
-    .post<ApiResponse<ListAllResponse>>('/file/listAll', {})
+    .post<ApiResponse<ListAllResponse>>('/file/list_all', {})
     .then((r) => r.data.payload!.files)
 }
 
@@ -69,7 +69,7 @@ function mergeParts(chunk_ids: string[], path: string) {
   return request.post<ApiResponse<boolean>>('/file/merge', { chunk_ids, path })
 }
 
-const CHUNK_SIZE = 0.9 * 1024 * 1024 // 900 KiB
+const CHUNK_SIZE = 1 * 1024 * 1024 // 1M
 
 export async function chunkedUpload(
   path: string,
