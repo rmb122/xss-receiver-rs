@@ -6,11 +6,11 @@
       @click="handleClick"
       @contextmenu.prevent="handleContextMenu"
     >
-      <v-icon v-if="node.kind === 'directory'" size="x-small" class="mr-1">
+      <v-icon v-if="node.kind === 'directory'" size="x-small" class="mr-1 tree-chevron">
         {{ node.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
       </v-icon>
       <span v-else class="tree-spacer" />
-      <v-icon size="small" class="mr-1" :color="iconInfo.color">
+      <v-icon size="small" class="mr-1 tree-icon" :color="iconInfo.color">
         {{ iconInfo.icon }}
       </v-icon>
       <span class="tree-name text-body-2">{{ node.name }}</span>
@@ -74,11 +74,18 @@ function handleContextMenu(e: MouseEvent) {
 .tree-node:hover {
   background-color: rgba(0, 0, 0, 0.06);
 }
+.tree-chevron,
+.tree-icon,
+.tree-spacer {
+  flex-shrink: 0;
+}
 .tree-spacer {
   display: inline-block;
   width: 20px;
 }
 .tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

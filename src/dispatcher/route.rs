@@ -1,7 +1,6 @@
 use std::{error::Error, fmt::Display, time::Duration};
 
 use async_trait::async_trait;
-use axum::response;
 use axum::{body::Body, http::Response};
 use boa_engine::{Context, JsError, Script, Source};
 use tokio::task;
