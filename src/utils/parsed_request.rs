@@ -57,7 +57,10 @@ impl ParsedRequest {
                 let query = request.uri().query();
                 if let Some(query) = query {
                     for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-                        params.insert(key.to_string(), value.to_string());
+                        params.insert(
+                            Self::escape_null_bytes(&key),
+                            Self::escape_null_bytes(&value),
+                        );
                     }
                 }
                 params
@@ -132,6 +135,12 @@ impl ParsedRequest {
         }
 
         (parsed_content_type, attrs)
+    }
+
+    fn escape_null_bytes(input: &str) -> String {
+        // 替换 \x00 -> \ufffd
+        // postgres jsonb 存不了 \x00, 这里手动转义一下
+        return input.replace("\x00", "\u{fffd}");
     }
 
     fn try_decode<T: AsRef<str>>(content: &'_ [u8], charset: Option<T>) -> Cow<'_, [u8]> {
