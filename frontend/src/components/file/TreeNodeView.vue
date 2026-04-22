@@ -2,11 +2,14 @@
   <div>
     <div
       class="tree-node d-flex align-center"
-      :style="{ paddingLeft: `${indent * 12 + 4}px` }"
+      :style="{
+        paddingLeft: `${indent * 12 + 2}px`,
+        '--indent': indent,
+      }"
       @click="handleClick"
       @contextmenu.prevent="handleContextMenu"
     >
-      <v-icon v-if="node.kind === 'directory'" size="x-small" class="mr-1 tree-chevron">
+      <v-icon v-if="node.kind === 'directory'" size="x-small" class="tree-chevron">
         {{ node.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right' }}
       </v-icon>
       <span v-else class="tree-spacer" />
@@ -70,9 +73,35 @@ function handleContextMenu(e: MouseEvent) {
   cursor: pointer;
   user-select: none;
   height: 22px;
+  position: relative;
 }
 .tree-node:hover {
   background-color: rgba(0, 0, 0, 0.06);
+}
+/*
+ * Indent guide lines.
+ * Each indent level is 12px wide; we paint a 1px vertical guide near the
+ * right edge of each indent column so it sits just to the left of the
+ * chevron / file-icon column, mimicking VS Code's tree guides.
+ */
+.tree-node::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--indent, 0) * 12px);
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent 9px,
+    rgba(0, 0, 0, 0.18) 9px,
+    rgba(0, 0, 0, 0.18) 10px,
+    transparent 10px,
+    transparent 12px
+  );
+  background-repeat: repeat-y;
 }
 .tree-chevron,
 .tree-icon,
@@ -81,7 +110,7 @@ function handleContextMenu(e: MouseEvent) {
 }
 .tree-spacer {
   display: inline-block;
-  width: 20px;
+  width: 16px;
 }
 .tree-name {
   flex: 1 1 auto;
