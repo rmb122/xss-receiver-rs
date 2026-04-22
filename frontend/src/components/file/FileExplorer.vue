@@ -3,6 +3,10 @@
     <div class="explorer-header d-flex align-center px-2 py-1">
       <span class="text-caption text-uppercase font-weight-bold">文件管理</span>
       <v-spacer />
+      <v-btn icon size="x-small" variant="text" @click="collapseAll">
+        <v-icon size="small">mdi-collapse-all</v-icon>
+        <v-tooltip activator="parent" location="top">折叠全部目录</v-tooltip>
+      </v-btn>
       <v-btn icon size="x-small" variant="text" @click="refreshNode(rootNode)">
         <v-icon size="small">mdi-refresh</v-icon>
         <v-tooltip activator="parent" location="top">刷新</v-tooltip>
@@ -144,6 +148,24 @@ async function refreshNode(node: TreeNode) {
   await loadChildren(node)
   node.expanded = true
   expandedPaths.add(node.path)
+  persistExpandedPaths()
+}
+
+// Recursively collapse every directory in the tree.
+// Root stays expanded (it has no collapsed state — it's always the visible starting point).
+function collapseAll() {
+  const walk = (node: TreeNode) => {
+    if (!node.children) return
+    for (const c of node.children) {
+      if (c.kind === 'directory') {
+        c.expanded = false
+        walk(c)
+      }
+    }
+  }
+  walk(rootNode.value)
+  expandedPaths.clear()
+  expandedPaths.add('')
   persistExpandedPaths()
 }
 
