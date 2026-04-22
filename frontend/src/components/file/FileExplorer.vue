@@ -41,6 +41,31 @@ const emit = defineEmits<{
   'context-menu': [payload: { node: TreeNode; x: number; y: number }]
 }>()
 
+// ----- Persisted expanded state -----
+// Stores the set of directory paths (relative) that are currently expanded,
+// so the tree state survives a full page refresh.
+const STORAGE_KEY = 'file-explorer-expanded'
+const expandedPaths = new Set<string>(loadExpandedPaths())
+
+function loadExpandedPaths(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return ['']
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : ['']
+  } catch {
+    return ['']
+  }
+}
+
+function persistExpandedPaths() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...expandedPaths]))
+  } catch {
+    // ignore quota errors
+  }
+}
+
 const rootNode = ref<TreeNode>({
   path: '',
   name: '/',
@@ -65,22 +90,41 @@ async function loadChildren(node: TreeNode) {
       oldChildren.set(c.name, c)
     }
   }
-  node.children = entries.map((e: Entry) => {
-    const existing = oldChildren.get(e.name)
-    if (existing && existing.kind === e.kind) {
-      // Same entry kept across refreshes: update size, keep tree state
-      existing.size = e.size
-      return existing
-    }
-    return {
-      path: node.path ? `${node.path}/${e.name}` : e.name,
-      name: e.name,
-      kind: e.kind,
-      size: e.size,
-      loaded: false,
-      expanded: false,
-    }
-  })
+
+  // Build children and recursively load any that should be pre-expanded
+  // (restored from localStorage). Done in parallel so all sibling subtrees
+  // load concurrently, and inside loadChildren itself so the tree renders
+  // in a single pass without a "collapsed then expand" flash.
+  const nextChildren: TreeNode[] = await Promise.all(
+    entries.map(async (e: Entry) => {
+      const existing = oldChildren.get(e.name)
+      if (existing && existing.kind === e.kind) {
+        existing.size = e.size
+        return existing
+      }
+      const childPath = node.path ? `${node.path}/${e.name}` : e.name
+      const child: TreeNode = {
+        path: childPath,
+        name: e.name,
+        kind: e.kind,
+        size: e.size,
+        loaded: false,
+        expanded: false,
+      }
+      if (e.kind === 'directory' && expandedPaths.has(childPath)) {
+        child.expanded = true
+        try {
+          await loadChildren(child)
+        } catch {
+          // stale path in storage — drop it and leave the child collapsed
+          expandedPaths.delete(childPath)
+          child.expanded = false
+        }
+      }
+      return child
+    }),
+  )
+  node.children = nextChildren
   node.loaded = true
 }
 
@@ -90,12 +134,17 @@ async function toggleNode(node: TreeNode) {
     await loadChildren(node)
   }
   node.expanded = !node.expanded
+  if (node.expanded) expandedPaths.add(node.path)
+  else expandedPaths.delete(node.path)
+  persistExpandedPaths()
 }
 
 async function refreshNode(node: TreeNode) {
   if (node.kind !== 'directory') return
   await loadChildren(node)
   node.expanded = true
+  expandedPaths.add(node.path)
+  persistExpandedPaths()
 }
 
 function onContextMenu(payload: { node: TreeNode; x: number; y: number }) {
@@ -123,6 +172,7 @@ function findParent(path: string): TreeNode | undefined {
 
 onMounted(async () => {
   await loadChildren(rootNode.value)
+  persistExpandedPaths()
 })
 
 defineExpose({
