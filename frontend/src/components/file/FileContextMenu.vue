@@ -14,12 +14,21 @@
       >
         <v-list-item-title>{{ item.label }}</v-list-item-title>
       </v-list-item>
+
+      <template v-if="target === 'file' && fileInfo">
+        <v-divider class="my-1" />
+        <div class="context-menu-info px-3 py-1 text-caption text-medium-emphasis">
+          <div>大小: {{ fileInfo.sizeText }}</div>
+          <div>修改时间: {{ fileInfo.timeText }}</div>
+        </div>
+      </template>
     </v-list>
   </v-menu>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatFileSize, formatTime } from '@/utils/format'
 
 export type ContextMenuAction =
   | 'new-file'
@@ -39,12 +48,23 @@ const props = defineProps<{
   target: ContextMenuTarget
   x: number
   y: number
+  size?: number
+  modifiedTime?: number
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   select: [action: ContextMenuAction]
 }>()
+
+const fileInfo = computed(() => {
+  if (props.target !== 'file') return null
+  if (props.size === undefined && props.modifiedTime === undefined) return null
+  return {
+    sizeText: props.size !== undefined ? formatFileSize(props.size) : '-',
+    timeText: props.modifiedTime ? formatTime(props.modifiedTime) : '-',
+  }
+})
 
 const items = computed<Array<{ key: ContextMenuAction; label: string; icon: string }>>(() => {
   switch (props.target) {
@@ -76,3 +96,12 @@ const items = computed<Array<{ key: ContextMenuAction; label: string; icon: stri
   }
 })
 </script>
+
+<style scoped>
+.context-menu-info {
+  line-height: 1.4;
+}
+.context-menu-info > div {
+  white-space: nowrap;
+}
+</style>

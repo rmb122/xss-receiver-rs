@@ -31,6 +31,8 @@
       :target="menuTarget"
       :x="menuX"
       :y="menuY"
+      :size="menuNode?.size"
+      :modified-time="menuNode?.modified_time"
       @select="onMenuSelect"
     />
 

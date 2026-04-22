@@ -35,6 +35,7 @@ export interface TreeNode {
   name: string
   kind: 'file' | 'directory'
   size: number
+  modified_time: number
   loaded: boolean
   expanded: boolean
   children?: TreeNode[]
@@ -75,6 +76,7 @@ const rootNode = ref<TreeNode>({
   name: '/',
   kind: 'directory',
   size: 0,
+  modified_time: 0,
   loaded: false,
   expanded: true,
 })
@@ -104,6 +106,7 @@ async function loadChildren(node: TreeNode) {
       const existing = oldChildren.get(e.name)
       if (existing && existing.kind === e.kind) {
         existing.size = e.size
+        existing.modified_time = e.modified_time
         return existing
       }
       const childPath = node.path ? `${node.path}/${e.name}` : e.name
@@ -112,6 +115,7 @@ async function loadChildren(node: TreeNode) {
         name: e.name,
         kind: e.kind,
         size: e.size,
+        modified_time: e.modified_time,
         loaded: false,
         expanded: false,
       }
