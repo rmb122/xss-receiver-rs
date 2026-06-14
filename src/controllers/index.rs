@@ -18,7 +18,7 @@ use crate::{
         system_log::helper::insert_system_log,
     },
     storage::Storage,
-    utils::{diesel_json, ip2region::Locator, parsed_request::ParsedRequestBody},
+    utils::{diesel_bytea, ip2region::Locator, parsed_request::ParsedRequestBody},
 };
 use crate::{
     dispatcher::Route,
@@ -87,12 +87,12 @@ pub async fn get_http_log_from_request(
         location: locator.locate(&request.client_addr.ip().to_string()),
         method: request.method.clone(),
         path: request.path.clone(),
-        arg: diesel_json::Json(request.params.clone()),
-        header: diesel_json::Json(request.headers.clone()),
+        arg: diesel_bytea::Json(request.params.clone()),
+        header: diesel_bytea::Json(request.headers.clone()),
         body_type: body_type,
-        body: body,
-        file: diesel_json::Json(file),
-        extra_info: serde_json::Value::Null,
+        body: diesel_bytea::StringBytes::new(body),
+        file: diesel_bytea::Json(file),
+        extra_info: diesel_bytea::Json(serde_json::Value::Null),
         error_log: None,
     })
 }
@@ -180,7 +180,7 @@ pub async fn process_route(
     let response = if let Some(mut new_http_log) = new_http_log {
         let response = match result {
             Ok((extra_info, response)) => {
-                new_http_log.extra_info = extra_info;
+                new_http_log.extra_info = diesel_bytea::Json(extra_info);
                 response
             }
             Err(error) => {

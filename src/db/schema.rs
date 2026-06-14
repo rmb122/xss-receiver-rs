@@ -10,12 +10,12 @@ diesel::table! {
         #[max_length = 255]
         method -> Varchar,
         path -> Varchar,
-        arg -> Jsonb,
-        header -> Jsonb,
+        arg -> Binary,
+        header -> Binary,
         body_type -> Int2,
-        body -> Text,
-        file -> Jsonb,
-        extra_info -> Jsonb,
+        body -> Binary,
+        file -> Binary,
+        extra_info -> Binary,
         error_log -> Nullable<Text>,
         create_time -> Timestamptz,
     }

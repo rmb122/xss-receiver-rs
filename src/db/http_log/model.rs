@@ -4,7 +4,7 @@ use diesel_enum::DbEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::db::EnumNotFoundError;
-use crate::utils::diesel_json;
+use crate::utils::diesel_bytea;
 use crate::utils::parsed_request::{KeyValues, PersistedUploadFile};
 
 #[derive(
@@ -41,14 +41,16 @@ pub struct HttpLog {
     pub method: String,
     pub path: String,
     #[schema(value_type = serde_json::Object)]
-    pub arg: diesel_json::Json<KeyValues>,
+    pub arg: diesel_bytea::Json<KeyValues>,
     #[schema(value_type = serde_json::Object)]
-    pub header: diesel_json::Json<KeyValues>,
+    pub header: diesel_bytea::Json<KeyValues>,
     pub body_type: BodyKind,
-    pub body: String,
+    #[schema(value_type = String)]
+    pub body: diesel_bytea::StringBytes,
     #[schema(value_type = serde_json::Object)]
-    pub file: diesel_json::Json<PersistedUploadFile>,
-    pub extra_info: serde_json::Value,
+    pub file: diesel_bytea::Json<PersistedUploadFile>,
+    #[schema(value_type = serde_json::Value)]
+    pub extra_info: diesel_bytea::Json<serde_json::Value>,
     pub error_log: Option<String>,
     pub create_time: chrono::DateTime<chrono::Utc>,
 }
@@ -62,11 +64,11 @@ pub struct NewHttpLog {
     pub location: String,
     pub method: String,
     pub path: String,
-    pub arg: diesel_json::Json<KeyValues>,
-    pub header: diesel_json::Json<KeyValues>,
+    pub arg: diesel_bytea::Json<KeyValues>,
+    pub header: diesel_bytea::Json<KeyValues>,
     pub body_type: BodyKind,
-    pub body: String,
-    pub file: diesel_json::Json<PersistedUploadFile>,
-    pub extra_info: serde_json::Value,
+    pub body: diesel_bytea::StringBytes,
+    pub file: diesel_bytea::Json<PersistedUploadFile>,
+    pub extra_info: diesel_bytea::Json<serde_json::Value>,
     pub error_log: Option<String>,
 }

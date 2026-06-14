@@ -145,7 +145,7 @@ impl RouteHandler for ScriptHandler {
                 .expect("create new async js runtime failed")
                 .block_on(async {
                     tokio::select! {
-                        v = script.evaluate_async(&mut context) => { 
+                        v = script.evaluate_async(&mut context) => {
                             let v = v.map_err(|err| ScriptError(err.to_string()))?;
                             Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
                         },

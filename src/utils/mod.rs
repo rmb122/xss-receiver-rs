@@ -1,4 +1,4 @@
-pub mod diesel_json;
+pub mod diesel_bytea;
 pub mod ip2region;
 pub mod jwt;
 pub mod multimap;
