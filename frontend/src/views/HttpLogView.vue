@@ -274,7 +274,7 @@ const rawBodyLoadingId = ref<number | null>(null)
 
 // 刷新功能状态
 const autoRefresh = ref<boolean>(true)
-const refreshTimer = ref<number | undefined>(undefined)
+const refreshTimer = ref<ReturnType<typeof setInterval> | undefined>(undefined)
 
 // 通知功能状态
 const lastMaxLog = ref<[number, number]>([-1, -1]) // [页数, 上一次的最大日志 ID]
@@ -282,8 +282,7 @@ const lastMaxLog = ref<[number, number]>([-1, -1]) // [页数, 上一次的最�
 async function fetchLogs(isAutoRefresh = false) {
   loading.value = true
   try {
-    const response = await getHttpLogs({ page: page.value, page_size: pageSize.value })
-    const payload = response.data.payload
+    const payload = await getHttpLogs({ page: page.value, page_size: pageSize.value })
     if (payload) {
       logs.value = payload.data
       total.value = payload.total
@@ -309,14 +308,14 @@ async function fetchLogs(isAutoRefresh = false) {
 
 function handleRowClick(_event: MouseEvent, item: { item: HttpLog }) {
   const logId = item.item.id
-  // vuetify 有 bug, 这里 id 是 number, 但是 expanded 必须用 string. 这里强制类型转换
+  const expandedId = String(logId)
 
   // 如果点击的行已经展开，则收起
-  if (expanded.value.length > 0 && (expanded.value[0] as unknown as number) === logId) {
+  if (expanded.value.length > 0 && expanded.value[0] === expandedId) {
     expanded.value = []
   } else {
     // 否则，收起之前的行，展开当前行
-    expanded.value = [logId as unknown as string]
+    expanded.value = [expandedId]
   }
 }
 
@@ -458,8 +457,8 @@ function inferRawBodyLanguage(log: HttpLog): string {
 async function openRawBody(log: HttpLog) {
   rawBodyLoadingId.value = log.id
   try {
-    const response = await getHttpLogRawBody(log.id)
-    rawBodyContent.value = new TextDecoder('utf-8', { fatal: false }).decode(response.data)
+    const body = await getHttpLogRawBody(log.id)
+    rawBodyContent.value = new TextDecoder('utf-8', { fatal: false }).decode(body)
     rawBodyLanguage.value = inferRawBodyLanguage(log)
     rawBodyFilename.value = `http-log-${log.id}.body`
     rawBodyDialog.value = true
@@ -513,7 +512,7 @@ function startAutoRefresh() {
   // 启动新的定时器（每 3 秒刷新一次）
   refreshTimer.value = setInterval(() => {
     fetchLogs(true) // 传递 true 表示这是自动刷新
-  }, 3000) as unknown as number
+  }, 3000)
 }
 
 // 停止自动刷新

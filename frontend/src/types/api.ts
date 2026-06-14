@@ -1,7 +1,7 @@
 export interface ApiResponse<T> {
   code: number
   msg: string | null
-  payload: T | null
+  payload: T
 }
 
 export interface PaginatedRequest {

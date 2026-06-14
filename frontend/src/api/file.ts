@@ -1,5 +1,4 @@
 import request from '@/utils/request'
-import type { ApiResponse } from '@/types/api'
 import type { Entry } from '@/types/file'
 import { BASE_URL } from '@/config/api'
 
@@ -18,27 +17,23 @@ interface PartUploadResponse {
 // ===== 目录/文件操作 =====
 
 export function listDir(path: string) {
-  return request
-    .post<ApiResponse<ListResponse>>('/file/list', { path })
-    .then((r) => r.data.payload!.entries)
+  return request.post<ListResponse>('/file/list', { path }).then((r) => r.entries)
 }
 
 export function listAll() {
-  return request
-    .post<ApiResponse<ListAllResponse>>('/file/list_all', {})
-    .then((r) => r.data.payload!.files)
+  return request.post<ListAllResponse>('/file/list_all', {}).then((r) => r.files)
 }
 
 export function mkdir(path: string) {
-  return request.post<ApiResponse<boolean>>('/file/mkdir', { path })
+  return request.post<boolean>('/file/mkdir', { path })
 }
 
 export function remove(path: string) {
-  return request.post<ApiResponse<boolean>>('/file/remove', { path })
+  return request.post<boolean>('/file/remove', { path })
 }
 
 export function rename(src: string, dst: string) {
-  return request.post<ApiResponse<boolean>>('/file/rename', { src, dst })
+  return request.post<boolean>('/file/rename', { src, dst })
 }
 
 // ===== 上传 =====
@@ -47,7 +42,7 @@ export function uploadFile(path: string, file: Blob) {
   const formData = new FormData()
   formData.append('path', path)
   formData.append('file', file)
-  return request.post<ApiResponse<boolean>>('/file/upload', formData, {
+  return request.post<boolean>('/file/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
@@ -55,7 +50,7 @@ export function uploadFile(path: string, file: Blob) {
 function uploadPart(chunk: Blob, onProgress?: (progress: number) => void) {
   const formData = new FormData()
   formData.append('file', chunk)
-  return request.post<ApiResponse<PartUploadResponse>>('/file/part', formData, {
+  return request.post<PartUploadResponse>('/file/part', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: (e) => {
       if (onProgress && e.total) {
@@ -66,7 +61,7 @@ function uploadPart(chunk: Blob, onProgress?: (progress: number) => void) {
 }
 
 function mergeParts(chunk_ids: string[], path: string) {
-  return request.post<ApiResponse<boolean>>('/file/merge', { chunk_ids, path })
+  return request.post<boolean>('/file/merge', { chunk_ids, path })
 }
 
 const CHUNK_SIZE = 1 * 1024 * 1024 // 1M
@@ -91,7 +86,7 @@ export async function chunkedUpload(
       }
     })
 
-    chunkIds.push(response.data.payload!.chunk_id)
+    chunkIds.push(response.chunk_id)
   }
 
   await mergeParts(chunkIds, path)
@@ -106,9 +101,7 @@ interface ContentResponse {
 }
 
 export function getFileContent(path: string) {
-  return request
-    .get<ApiResponse<ContentResponse>>(`/file/content`, { params: { path } })
-    .then((r) => r.data.payload!.content)
+  return request.get<ContentResponse>(`/file/content`, { params: { path } }).then((r) => r.content)
 }
 
 export function downloadFile(path: string) {

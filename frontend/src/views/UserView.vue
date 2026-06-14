@@ -128,8 +128,7 @@ async function fetchUsers() {
   loading.value = true
   try {
     if (userStore.isAdmin) {
-      const response = await getAllUsers()
-      users.value = response.data.payload || []
+      users.value = await getAllUsers()
     } else if (userStore.user) {
       users.value = [
         {

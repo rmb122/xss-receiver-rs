@@ -11,8 +11,7 @@ export const useUserStore = defineStore('user', () => {
 
   async function loadUser() {
     try {
-      const response = await getCurrentUser()
-      user.value = response.data.payload
+      user.value = await getCurrentUser()
       isAdmin.value = user.value?.id === 1
       isLoaded.value = true
     } catch {

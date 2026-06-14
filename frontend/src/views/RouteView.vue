@@ -292,8 +292,7 @@ function resetForm() {
 async function fetchRoutes() {
   loading.value = true
   try {
-    const response = await getAllRoutes()
-    routes.value = response.data.payload || []
+    routes.value = await getAllRoutes()
     nextTick(() => {
       expandAllGroups(groupHeaders)
     })

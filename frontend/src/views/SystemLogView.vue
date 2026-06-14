@@ -53,8 +53,7 @@ const loading = ref(false)
 async function fetchLogs() {
   loading.value = true
   try {
-    const response = await getSystemLogs({ page: page.value, page_size: pageSize.value })
-    const payload = response.data.payload
+    const payload = await getSystemLogs({ page: page.value, page_size: pageSize.value })
     if (payload) {
       logs.value = payload.data
       total.value = payload.total
