@@ -61,7 +61,10 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
 import FileExplorer, { type TreeNode } from '@/components/file/FileExplorer.vue'
-import FileContextMenu, { type ContextMenuAction, type ContextMenuTarget } from '@/components/file/FileContextMenu.vue'
+import FileContextMenu, {
+  type ContextMenuAction,
+  type ContextMenuTarget,
+} from '@/components/file/FileContextMenu.vue'
 import FileEditorTabs, { type EditorTab } from '@/components/file/FileEditorTabs.vue'
 import DirectoryFormDialog from '@/components/file/DirectoryFormDialog.vue'
 import FileUploadDialog from '@/components/file/FileUploadDialog.vue'
@@ -169,7 +172,8 @@ function forceCloseTab(path: string) {
 function closeManyTabs(paths: string[]) {
   const pathSet = new Set(paths)
   const wasActiveClosed = activeTab.value !== null && pathSet.has(activeTab.value)
-  const oldActiveIdx = activeTab.value !== null ? tabs.value.findIndex((t) => t.path === activeTab.value) : -1
+  const oldActiveIdx =
+    activeTab.value !== null ? tabs.value.findIndex((t) => t.path === activeTab.value) : -1
   tabs.value = tabs.value.filter((t) => !pathSet.has(t.path))
   if (wasActiveClosed) {
     if (tabs.value.length === 0) {

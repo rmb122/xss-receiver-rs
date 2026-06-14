@@ -64,7 +64,7 @@
                       location: item.location,
                       method: item.method,
                       path: item.path,
-                      body_type: item.body_type,
+                      parsed_body_type: item.parsed_body_type,
                       create_time: item.create_time,
                     }"
                     max-height="200px"
@@ -90,32 +90,39 @@
                 </div>
 
                 <!-- 请求体 -->
-                <div v-if="item.body" class="mb-3">
+                <div class="mb-3">
                   <div
                     class="text-subtitle-2 font-weight-bold mb-1 d-flex align-center justify-space-between"
                   >
                     <div>
                       <v-icon size="small" class="mr-1">mdi-code-braces</v-icon>
-                      请求体 [{{ item.body_type }}]
+                      解析请求体 [{{ item.parsed_body_type }}]
                       <v-btn
+                        v-if="item.parsed_body"
                         size="small"
                         icon="mdi-content-copy"
                         variant="text"
-                        @click="copyBody(item)"
+                        @click.stop="copyParsedBody(item)"
                       >
                       </v-btn>
                     </div>
+                    <v-btn
+                      size="small"
+                      prepend-icon="mdi-file-eye-outline"
+                      variant="text"
+                      :loading="rawBodyLoadingId === item.id"
+                      @click.stop="openRawBody(item)"
+                    >
+                      查看原始请求体
+                    </v-btn>
                   </div>
 
-                  <!-- 如果是 JSON 或 FORM 类型，使用 JsonHighlight -->
                   <JsonHighlight
-                    v-if="item.body_type === 'JSON' || item.body_type === 'FORM'"
-                    :data="JSON.parse(item.body)"
+                    v-if="item.parsed_body_type === 'JSON' || item.parsed_body_type === 'FORM'"
+                    :data="JSON.parse(item.parsed_body)"
                     max-height="200px"
                   />
-
-                  <!-- 其他类型（RAW 等），直接显示原始内容 -->
-                  <pre v-else class="raw-body">{{ item.body }}</pre>
+                  <div v-else class="text-body-2 text-medium-emphasis">没有可展示的解析请求体</div>
                 </div>
 
                 <!-- 文件 -->
@@ -160,15 +167,37 @@
       </v-data-table-server>
     </v-card>
   </v-container>
+
+  <v-dialog v-model="rawBodyDialog" max-width="1000px">
+    <v-card>
+      <v-card-title class="d-flex align-center">
+        <v-icon class="mr-2">mdi-file-code-outline</v-icon>
+        原始请求体
+        <v-spacer />
+        <v-btn icon="mdi-close" variant="text" @click="rawBodyDialog = false" />
+      </v-card-title>
+      <v-card-text>
+        <MonacoEditor
+          v-model="rawBodyContent"
+          :language="rawBodyLanguage"
+          :filename="rawBodyFilename"
+          height="60vh"
+          read-only
+          wrap-line
+        />
+      </v-card-text>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { UAParser } from 'ua-parser-js'
-import { getHttpLogs } from '@/api/httpLog'
+import { getHttpLogRawBody, getHttpLogs } from '@/api/httpLog'
 import { getDownloadLogFileUrl } from '@/api/file'
 import type { HttpLog } from '@/types/httpLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
+import MonacoEditor from '@/components/MonacoEditor.vue'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
@@ -237,6 +266,11 @@ const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
 const expanded = ref<readonly string[]>([])
+const rawBodyDialog = ref(false)
+const rawBodyContent = ref('')
+const rawBodyLanguage = ref('plaintext')
+const rawBodyFilename = ref('raw-body.txt')
+const rawBodyLoadingId = ref<number | null>(null)
 
 // 刷新功能状态
 const autoRefresh = ref<boolean>(true)
@@ -334,21 +368,21 @@ function getDataSummary(log: HttpLog): string {
   }
 
   // POST keys
-  if (log.body) {
-    if (log.body_type === 'FORM') {
+  if (log.parsed_body) {
+    if (log.parsed_body_type === 'FORM') {
       try {
-        const bodyKeys = Object.keys(JSON.parse(log.body))
+        const bodyKeys = Object.keys(JSON.parse(log.parsed_body))
         if (bodyKeys.length > 0) {
           parts.push(`POST: [${bodyKeys.join(', ')}]`)
         }
       } catch {
         parts.push('POST: [FORM]')
       }
-    } else if (log.body_type === 'JSON') {
+    } else if (log.parsed_body_type === 'JSON') {
       parts.push('POST: [JSON]')
-    } else if (log.body_type === 'RAW') {
-      parts.push('POST: [RAW]')
     }
+  } else if (log.parsed_body_type === 'NONE') {
+    parts.push('POST: [NONE]')
   }
 
   // FILE keys
@@ -376,25 +410,64 @@ function getDataSummary(log: HttpLog): string {
   return parts.join(' ')
 }
 
-const copyBody = async (log: HttpLog) => {
+const copyParsedBody = async (log: HttpLog) => {
   try {
-    let textToCopy: string
-
-    // 根据 body 类型确定要复制的内容
-    if (typeof log.body === 'string') {
-      textToCopy = log.body
-    } else if (typeof log.body === 'object' && log.body !== null) {
-      textToCopy = JSON.stringify(log.body, null, 2)
-    } else {
-      textToCopy = String(log.body)
-    }
-
-    // 使用 Clipboard API 复制
-    await navigator.clipboard.writeText(textToCopy)
-    showSuccessToast('请求体已复制到剪贴板')
+    await navigator.clipboard.writeText(log.parsed_body)
+    showSuccessToast('解析请求体已复制到剪贴板')
   } catch (error) {
     console.error('复制失败:', error)
     showErrorToast('复制失败', '无法访问剪贴板')
+  }
+}
+
+function getHeaderValue(log: HttpLog, name: string): string {
+  const target = name.toLowerCase()
+  for (const [key, values] of Object.entries(log.header || {})) {
+    if (key.toLowerCase() === target && values.length > 0) {
+      return values[0] ?? ''
+    }
+  }
+  return ''
+}
+
+function inferRawBodyLanguage(log: HttpLog): string {
+  if (log.parsed_body_type === 'JSON') {
+    return 'json'
+  }
+
+  const contentType = getHeaderValue(log, 'content-type').toLowerCase()
+  if (contentType.includes('json')) {
+    return 'json'
+  }
+  if (contentType.includes('html')) {
+    return 'html'
+  }
+  if (contentType.includes('xml')) {
+    return 'xml'
+  }
+  if (contentType.includes('css')) {
+    return 'css'
+  }
+  if (contentType.includes('javascript') || contentType.includes('ecmascript')) {
+    return 'javascript'
+  }
+
+  return 'plaintext'
+}
+
+async function openRawBody(log: HttpLog) {
+  rawBodyLoadingId.value = log.id
+  try {
+    const response = await getHttpLogRawBody(log.id)
+    rawBodyContent.value = new TextDecoder('utf-8', { fatal: false }).decode(response.data)
+    rawBodyLanguage.value = inferRawBodyLanguage(log)
+    rawBodyFilename.value = `http-log-${log.id}.body`
+    rawBodyDialog.value = true
+  } catch (error) {
+    console.error('获取原始请求体失败:', error)
+    showErrorToast('获取失败', '无法加载原始请求体')
+  } finally {
+    rawBodyLoadingId.value = null
   }
 }
 
@@ -503,16 +576,6 @@ onUnmounted(() => {
   background-color: #ffebee;
   border-color: #ef9a9a;
   color: #c62828;
-}
-
-.raw-body {
-  background: #f6f8fa;
-  padding: 12px;
-  border-radius: 6px;
-  border: 1px solid #d0d7de;
-  overflow: auto;
-  max-height: 200px;
-  font-size: 14px;
 }
 
 .summary-cell {

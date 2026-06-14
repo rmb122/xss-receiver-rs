@@ -11,7 +11,7 @@ const DEFAULT_ICON: FileIcon = { icon: 'mdi-file-outline', color: 'grey-darken-1
 
 // 精确文件名映射（优先于扩展名匹配）
 const FILENAME_MAP: Record<string, FileIcon> = {
-  'dockerfile': { icon: 'mdi-docker', color: 'blue' },
+  dockerfile: { icon: 'mdi-docker', color: 'blue' },
   '.dockerignore': { icon: 'mdi-docker', color: 'blue' },
   '.gitignore': { icon: 'mdi-git', color: 'orange-darken-2' },
   '.gitattributes': { icon: 'mdi-git', color: 'orange-darken-2' },
@@ -23,8 +23,8 @@ const FILENAME_MAP: Record<string, FileIcon> = {
   'cargo.toml': { icon: 'mdi-language-rust', color: 'orange-darken-4' },
   'cargo.lock': { icon: 'mdi-language-rust', color: 'orange-darken-4' },
   'readme.md': { icon: 'mdi-information-outline', color: 'blue' },
-  'license': { icon: 'mdi-license', color: 'amber-darken-2' },
-  'makefile': { icon: 'mdi-cog-outline', color: 'grey-darken-2' },
+  license: { icon: 'mdi-license', color: 'amber-darken-2' },
+  makefile: { icon: 'mdi-cog-outline', color: 'grey-darken-2' },
 }
 
 // 按扩展名映射

@@ -85,8 +85,8 @@ onMounted(() => {
     automaticLayout: true,
     fontSize: 14,
     padding: {
-      top: 3
-    }
+      top: 3,
+    },
   })
 
   editor.onDidChangeModelContent(() => {

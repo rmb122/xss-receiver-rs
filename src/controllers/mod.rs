@@ -115,7 +115,9 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(route::delete_route))
         .routes(routes!(route::update_route));
 
-    let http_log_router = OpenApiRouter::new().routes(routes!(http_log::get_http_logs));
+    let http_log_router = OpenApiRouter::new()
+        .routes(routes!(http_log::get_http_logs))
+        .routes(routes!(http_log::get_http_log_raw_body_response));
 
     let system_log_router = OpenApiRouter::new().routes(routes!(system_log::get_system_logs));
 

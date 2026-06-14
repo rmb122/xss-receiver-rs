@@ -38,3 +38,15 @@ pub async fn get_http_logs_paginated(
 
     Ok((logs, total))
 }
+
+pub async fn get_http_log_raw_body(
+    conn: &mut AsyncPgConnection,
+    id: i32,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    Ok(http_log::table
+        .find(id)
+        .select(http_log::raw_body)
+        .first::<Vec<u8>>(conn)
+        .await
+        .optional()?)
+}

@@ -4,7 +4,6 @@ use axum::{
     http::{HeaderMap, HeaderName, HeaderValue, Request},
     response::Response,
 };
-use base64::prelude::*;
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 
@@ -55,12 +54,8 @@ pub async fn get_http_log_from_request(
     locator: &Locator,
     storage: &Storage,
 ) -> anyhow::Result<NewHttpLog> {
-    let (body_type, body, file) = match &request.parsed_body {
-        ParsedRequestBody::None => (
-            BodyKind::RAW,
-            BASE64_STANDARD.encode(&request.body),
-            PersistedUploadFile::new(),
-        ),
+    let (parsed_body_type, parsed_body, file) = match &request.parsed_body {
+        ParsedRequestBody::None => (BodyKind::NONE, String::new(), PersistedUploadFile::new()),
         ParsedRequestBody::Form(form, file) => {
             let mut persisted_upload_file = PersistedUploadFile::new();
             for i in file.iter() {
@@ -89,8 +84,9 @@ pub async fn get_http_log_from_request(
         path: request.path.clone(),
         arg: diesel_bytea::Json(request.params.clone()),
         header: diesel_bytea::Json(request.headers.clone()),
-        body_type: body_type,
-        body: diesel_bytea::StringBytes::new(body),
+        parsed_body_type,
+        parsed_body: diesel_bytea::StringBytes::new(parsed_body),
+        raw_body: request.body.clone(),
         file: diesel_bytea::Json(file),
         extra_info: diesel_bytea::Json(serde_json::Value::Null),
         error_log: None,

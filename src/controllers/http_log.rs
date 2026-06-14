@@ -1,11 +1,19 @@
-use axum::extract::{Query, State};
+use axum::{
+    body::Body,
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
+    response::IntoResponse,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::controllers::user::LoggedUser;
 use crate::{
     Context,
     controllers::AppError,
-    db::http_log::{helper::get_http_logs_paginated, model::HttpLog},
+    db::http_log::{
+        helper::{get_http_log_raw_body, get_http_logs_paginated},
+        model::HttpLog,
+    },
     utils::{jwt::Claims, response::Response},
 };
 
@@ -61,4 +69,27 @@ pub async fn get_http_logs(
             page_size: request.page_size,
         }),
     )
+}
+
+#[utoipa::path(
+    get,
+    path = "/{id}/raw_body",
+    params(("id" = i32, Path, description = "HTTP log id")),
+    responses((status = OK, description = "原始请求体", body = Vec<u8>))
+)]
+pub async fn get_http_log_raw_body_response(
+    State(ctx): State<Context>,
+    Claims(_user): Claims<LoggedUser>,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, AppError> {
+    let mut conn = ctx.db_conn().await?;
+    let body = get_http_log_raw_body(&mut conn, id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("http log not found"))?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/octet-stream")],
+        Body::from(body),
+    ))
 }

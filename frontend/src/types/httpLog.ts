@@ -1,4 +1,4 @@
-export type BodyKind = 'RAW' | 'FORM' | 'JSON'
+export type BodyKind = 'NONE' | 'FORM' | 'JSON'
 
 export type KeyValues = Record<string, string[]>
 export type PersistedUploadFile = Record<string, [string, string][]>
@@ -12,8 +12,8 @@ export interface HttpLog {
   path: string
   arg: KeyValues
   header: KeyValues
-  body_type: BodyKind
-  body: string
+  parsed_body_type: BodyKind
+  parsed_body: string
   file: PersistedUploadFile
   extra_info: any
   error_log: string | null

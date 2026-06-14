@@ -25,12 +25,12 @@ use crate::utils::parsed_request::{KeyValues, PersistedUploadFile};
 #[diesel_enum(error_type = EnumNotFoundError)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum BodyKind {
-    RAW,
+    NONE,
     FORM,
     JSON,
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Queryable, Selectable, Serialize, Deserialize, utoipa::ToSchema)]
 #[diesel(table_name = crate::db::schema::http_log)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct HttpLog {
@@ -44,9 +44,9 @@ pub struct HttpLog {
     pub arg: diesel_bytea::Json<KeyValues>,
     #[schema(value_type = serde_json::Object)]
     pub header: diesel_bytea::Json<KeyValues>,
-    pub body_type: BodyKind,
+    pub parsed_body_type: BodyKind,
     #[schema(value_type = String)]
-    pub body: diesel_bytea::StringBytes,
+    pub parsed_body: diesel_bytea::StringBytes,
     #[schema(value_type = serde_json::Object)]
     pub file: diesel_bytea::Json<PersistedUploadFile>,
     #[schema(value_type = serde_json::Value)]
@@ -66,8 +66,9 @@ pub struct NewHttpLog {
     pub path: String,
     pub arg: diesel_bytea::Json<KeyValues>,
     pub header: diesel_bytea::Json<KeyValues>,
-    pub body_type: BodyKind,
-    pub body: diesel_bytea::StringBytes,
+    pub parsed_body_type: BodyKind,
+    pub parsed_body: diesel_bytea::StringBytes,
+    pub raw_body: Vec<u8>,
     pub file: diesel_bytea::Json<PersistedUploadFile>,
     pub extra_info: diesel_bytea::Json<serde_json::Value>,
     pub error_log: Option<String>,
