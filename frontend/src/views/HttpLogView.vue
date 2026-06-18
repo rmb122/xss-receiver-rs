@@ -25,7 +25,7 @@
         :items="logs"
         :items-length="total"
         :loading="loading"
-        item-value="id"
+        :item-value="item => item.id.toString()"
         show-expand
         density="comfortable"
         :items-per-page-options="[10, 20, 50, 100]"
@@ -201,6 +201,7 @@ import MonacoEditor from '@/components/MonacoEditor.vue'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
+import { id } from 'vuetify/locale'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -307,15 +308,16 @@ async function fetchLogs(isAutoRefresh = false) {
 }
 
 function handleRowClick(_event: MouseEvent, item: { item: HttpLog }) {
-  const logId = item.item.id
-  const expandedId = String(logId)
+  // vuetify expanded 强制用 string 作为 expanded key, 所以上面用 item-value 将 number 转换成了 string
+  // 这里同理
+  const logId = item.item.id.toString()
 
   // 如果点击的行已经展开，则收起
-  if (expanded.value.length > 0 && expanded.value[0] === expandedId) {
+  if (expanded.value.length > 0 && expanded.value[0] === logId) {
     expanded.value = []
   } else {
     // 否则，收起之前的行，展开当前行
-    expanded.value = [expandedId]
+    expanded.value = [logId]
   }
 }
 
