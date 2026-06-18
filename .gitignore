@@ -5,4 +5,8 @@
 
 docker/*.xdb
 docker/config.toml
+docker/app_data/
+docker/db_data/
 docs/
+
+config.toml

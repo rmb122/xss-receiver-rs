@@ -1,4 +1,4 @@
-db_url = "postgres://postgres:postgres@172.17.0.2/postgres"
+db_url = "postgres://postgres:postgres@database/postgres"
 storage_path = "/tmp/"
 
 [http_server]
