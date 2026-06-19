@@ -1,4 +1,4 @@
-export type BodyKind = 'NONE' | 'FORM' | 'JSON'
+export type BodyKind = 'NONE' | 'FAILED' | 'FORM' | 'JSON'
 
 export type KeyValues = Record<string, string[]>
 export type PersistedUploadFile = Record<string, [string, string][]>

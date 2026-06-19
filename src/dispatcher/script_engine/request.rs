@@ -188,7 +188,7 @@ pub fn register_request_to_context(context: &mut Context, request: &ParsedReques
         ParsedRequestBody::Form(form, files) => {
             (JsValue::from(JsObject::with_null_proto()), form, files)
         }
-        ParsedRequestBody::None => (
+        ParsedRequestBody::None | ParsedRequestBody::Failed => (
             JsValue::from(JsObject::with_null_proto()),
             &empty_form,
             &empty_files,

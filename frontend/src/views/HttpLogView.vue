@@ -25,7 +25,7 @@
         :items="logs"
         :items-length="total"
         :loading="loading"
-        :item-value="item => item.id.toString()"
+        :item-value="(item) => item.id.toString()"
         show-expand
         density="comfortable"
         :items-per-page-options="[10, 20, 50, 100]"
@@ -90,7 +90,7 @@
                 </div>
 
                 <!-- 请求体 -->
-                <div class="mb-3">
+                <div v-if="item.parsed_body_type !== 'NONE'" class="mb-3">
                   <div
                     class="text-subtitle-2 font-weight-bold mb-1 d-flex align-center justify-space-between"
                   >
@@ -122,7 +122,12 @@
                     :data="JSON.parse(item.parsed_body)"
                     max-height="200px"
                   />
-                  <div v-else class="text-body-2 text-medium-emphasis">没有可展示的解析请求体</div>
+                  <div
+                    v-else-if="item.parsed_body_type === 'FAILED'"
+                    class="text-body-2 text-warning"
+                  >
+                    请求体解析失败，请查看原始请求体
+                  </div>
                 </div>
 
                 <!-- 文件 -->
@@ -201,7 +206,6 @@ import MonacoEditor from '@/components/MonacoEditor.vue'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
-import { id } from 'vuetify/locale'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -382,8 +386,8 @@ function getDataSummary(log: HttpLog): string {
     } else if (log.parsed_body_type === 'JSON') {
       parts.push('POST: [JSON]')
     }
-  } else if (log.parsed_body_type === 'NONE') {
-    parts.push('POST: [NONE]')
+  } else if (log.parsed_body_type === 'FAILED') {
+    parts.push('POST: [FAILED]')
   }
 
   // FILE keys
