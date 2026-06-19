@@ -26,6 +26,7 @@ use crate::utils::parsed_request::{KeyValues, PersistedUploadFile};
 #[serde(rename_all = "UPPERCASE")]
 pub enum BodyKind {
     NONE,
+    FAILED,
     FORM,
     JSON,
 }

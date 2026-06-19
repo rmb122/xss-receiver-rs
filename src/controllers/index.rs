@@ -56,6 +56,7 @@ pub async fn get_http_log_from_request(
 ) -> anyhow::Result<NewHttpLog> {
     let (parsed_body_type, parsed_body, file) = match &request.parsed_body {
         ParsedRequestBody::None => (BodyKind::NONE, String::new(), PersistedUploadFile::new()),
+        ParsedRequestBody::Failed => (BodyKind::FAILED, String::new(), PersistedUploadFile::new()),
         ParsedRequestBody::Form(form, file) => {
             let mut persisted_upload_file = PersistedUploadFile::new();
             for i in file.iter() {

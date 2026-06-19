@@ -1,5 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, net::SocketAddr};
 
+use anyhow::anyhow;
 use axum::{body::Body, http::Request};
 use encoding_rs::Encoding;
 use futures::TryStreamExt;
@@ -17,6 +18,7 @@ pub type PersistedUploadFile = MultiMap<String, (String, String)>;
 #[derive(Debug)]
 pub enum ParsedRequestBody {
     None,
+    Failed,                      // 解析失败
     Form(KeyValues, UploadFile), // (普通的 post form, file)
     Json(Value),
 }
@@ -82,7 +84,11 @@ impl ParsedRequest {
             reader.read_to_end(&mut parsed_request.body).await?;
         }
 
-        parsed_request.parse_body().await;
+        // 解析失败, 设置为 Failed
+        parsed_request.parsed_body = parsed_request
+            .parse_body()
+            .await
+            .unwrap_or(ParsedRequestBody::Failed);
 
         Ok(parsed_request)
     }
@@ -149,25 +155,25 @@ impl ParsedRequest {
         }
     }
 
-    async fn parse_body(&mut self) {
-        let content_type = match self.headers.get(&"Content-Type".to_owned()) {
-            Some(content_type) => content_type,
-            None => {
-                // 没有 content-type 不进行解析
-                return;
-            }
-        };
+    async fn parse_body(&mut self) -> Result<ParsedRequestBody, anyhow::Error> {
+        if self.body.len() == 0 {
+            // 如果没有请求体, 直接返回
+            return Ok(ParsedRequestBody::None);
+        }
+
+        let content_type = self
+            .headers
+            .get(&"Content-Type".to_owned())
+            .ok_or(anyhow!("content-type not found in request"))?;
 
         let (content_type, attrs) = Self::parse_content_type(content_type);
 
         // try json
         if content_type.ends_with("/json") || content_type.ends_with("+json") {
             let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
-
-            if let Ok(value) = serde_json::from_slice::<Value>(&body) {
-                self.parsed_body = ParsedRequestBody::Json(value);
-                return;
-            }
+            return Ok(ParsedRequestBody::Json(serde_json::from_slice::<Value>(
+                &body,
+            )?));
         }
 
         // try x-www-form-urlencoded
@@ -178,8 +184,7 @@ impl ParsedRequest {
             for (key, value) in form_urlencoded::parse(&body) {
                 form.insert(key.to_string(), value.to_string());
             }
-            self.parsed_body = ParsedRequestBody::Form(form, UploadFile::new());
-            return;
+            return Ok(ParsedRequestBody::Form(form, UploadFile::new()));
         }
 
         // try form-data
@@ -226,8 +231,9 @@ impl ParsedRequest {
                 }
             }
 
-            self.parsed_body = ParsedRequestBody::Form(form, file);
-            return;
+            return Ok(ParsedRequestBody::Form(form, file));
         }
+
+        return Err(anyhow!("not a valid content-type in request"));
     }
 }
