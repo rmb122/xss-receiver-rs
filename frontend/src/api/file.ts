@@ -24,6 +24,10 @@ export function listAll() {
   return request.post<ListAllResponse>('/file/list_all', {}).then((r) => r.files)
 }
 
+export function statFile(path: string) {
+  return request.get<Entry>('/file/stat', { params: { path } })
+}
+
 export function mkdir(path: string) {
   return request.post<boolean>('/file/mkdir', { path })
 }
@@ -95,13 +99,15 @@ export async function chunkedUpload(
 
 // ===== 下载/读取 =====
 
-interface ContentResponse {
-  content: string
-  size: number
-}
-
-export function getFileContent(path: string) {
-  return request.get<ContentResponse>(`/file/content`, { params: { path } }).then((r) => r.content)
+export function getFileBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
+  return request
+    .raw<ArrayBuffer>({
+      method: 'GET',
+      url: `/file/download`,
+      params: { path },
+      responseType: 'arraybuffer',
+    })
+    .then((buf) => new Uint8Array(buf))
 }
 
 export function downloadFile(path: string) {

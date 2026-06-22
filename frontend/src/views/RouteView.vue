@@ -181,7 +181,7 @@
     <FileEditorDialog
       v-model="handlerEditorDialog"
       :file-name="editingHandlerFile.name"
-      :file-content="editingHandlerFile.content"
+      :file-bytes="editingHandlerFile.bytes"
       :loading="savingHandler"
       @save="handleSaveHandlerFile"
       @save-and-close="handleSaveHandlerFileAndClose"
@@ -192,7 +192,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { getAllRoutes, createRoute, updateRoute, deleteRoute } from '@/api/route'
-import { listAll, getFileContent, chunkedUpload } from '@/api/file'
+import { listAll, getFileBytes, chunkedUpload } from '@/api/file'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { formatTime } from '@/utils/format'
 import { expandAllGroups } from '@/utils/table'
@@ -227,7 +227,7 @@ const groupHeaders = ref<
 
 // Handler 文件编辑器相关状态
 const handlerEditorDialog = ref(false)
-const editingHandlerFile = ref({ name: '', content: '', path: '' })
+const editingHandlerFile = ref({ name: '', bytes: new Uint8Array(0), path: '' })
 const savingHandler = ref(false)
 
 // 计算 headers，在分组模式下隐藏 catalog 列
@@ -381,21 +381,21 @@ async function openHandlerEditor(route: Route) {
     return
   }
   const filename = route.handler.split('/').pop() || route.handler
-  const content = await getFileContent(route.handler)
+  const bytes = await getFileBytes(route.handler)
 
   editingHandlerFile.value = {
     name: filename,
-    content: content,
+    bytes: bytes,
     path: route.handler,
   }
   handlerEditorDialog.value = true
 }
 
 // 保存 Handler 文件
-async function handleSaveHandlerFile(content: string) {
+async function handleSaveHandlerFile(bytes: Uint8Array<ArrayBuffer>) {
   try {
     savingHandler.value = true
-    await chunkedUpload(editingHandlerFile.value.path, new Blob([content], { type: 'text/plain' }))
+    await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
     showSuccessToast('保存成功')
   } finally {
     savingHandler.value = false
@@ -403,10 +403,10 @@ async function handleSaveHandlerFile(content: string) {
 }
 
 // 保存 Handler 文件并关闭编辑器
-async function handleSaveHandlerFileAndClose(content: string) {
+async function handleSaveHandlerFileAndClose(bytes: Uint8Array<ArrayBuffer>) {
   try {
     savingHandler.value = true
-    await chunkedUpload(editingHandlerFile.value.path, new Blob([content], { type: 'text/plain' }))
+    await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
     showSuccessToast('保存成功')
     handlerEditorDialog.value = false
   } finally {

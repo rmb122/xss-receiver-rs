@@ -131,7 +131,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(file::upload_part))
         .routes(routes!(file::merge_parts))
         .routes(routes!(file::download))
-        .routes(routes!(file::content))
+        .routes(routes!(file::stat))
         .routes(routes!(file::download_log_file));
 
     let (mut admin_api_router, mut openapi) = OpenApiRouter::new()

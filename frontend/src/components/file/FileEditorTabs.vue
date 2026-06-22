@@ -27,7 +27,7 @@
         <span class="tab-name">{{ basename(tab.path) }}</span>
         <span v-if="tabHint(tab.path)" class="tab-hint ml-1">{{ tabHint(tab.path) }}</span>
         <v-icon size="x-small" class="tab-close ml-2" @click.stop="requestClose(tab.path)">
-          {{ isDirty(tab) ? 'mdi-circle-medium' : 'mdi-close' }}
+          {{ tab.dirty ? 'mdi-circle-medium' : 'mdi-close' }}
         </v-icon>
       </div>
     </div>
@@ -42,7 +42,14 @@
         <v-icon size="64" color="grey-lighten-1">mdi-file-document-outline</v-icon>
         <div class="text-h6 mt-4 text-grey">从左侧选择文件打开</div>
       </div>
-      <div v-else ref="editorContainer" class="editor-container"></div>
+      <MonacoEditor
+        v-else
+        :model="activeModel"
+        :encoding="activeTabEncoding"
+        :read-only="savingPath !== null && savingPath === activeTab"
+        height="100%"
+        @update:encoding="onEditorEncodingChange"
+      />
     </div>
 
     <v-menu v-model="tabMenuOpen" :target="[tabMenuX, tabMenuY]" close-on-content-click>
@@ -68,17 +75,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, shallowRef, markRaw, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { monaco } from '@/monaco'
-import { typescript, type IDisposable } from 'monaco-editor'
-import { scriptEngineTypes } from '@/script-engine-types'
 import { fileIcon } from '@/utils/fileIcon'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import MonacoEditor from '@/components/MonacoEditor.vue'
+import { decodeBytes } from '@/utils/encoding'
 
 export interface EditorTab {
   path: string
-  content: string
-  originalContent: string
+  bytes: Uint8Array<ArrayBuffer>
+  encoding: string
+  dirty: boolean
 }
 
 const props = defineProps<{
@@ -93,28 +101,38 @@ const emit = defineEmits<{
   close: [path: string]
   'close-many': [paths: string[]]
   save: [path: string]
-  'content-change': [payload: { path: string; content: string }]
   reorder: [payload: { src: string; dstIndex: number }]
 }>()
 
-const editorContainer = ref<HTMLElement | null>(null)
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
-let editor: monaco.editor.IStandaloneCodeEditor | null = null
 const models = new Map<string, monaco.editor.ITextModel>()
-let extraLibDisposable: IDisposable | null = null
+// shallowRef + markRaw: never let Vue deeply proxy a monaco model, or its
+// internals break and the editor spins / hangs the page.
+const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
 
-function updateExtraLib(path: string | null) {
-  const needsLib = path !== null && path.endsWith('.xjs')
-  if (needsLib && !extraLibDisposable) {
-    extraLibDisposable = typescript.javascriptDefaults.addExtraLib(
-      scriptEngineTypes,
-      'ts:script-engine.d.ts',
+const activeTabEncoding = computed(() => {
+  const tab = props.tabs.find((t) => t.path === props.activeTab)
+  return tab?.encoding ?? 'UTF-8'
+})
+
+async function onEditorEncodingChange(enc: string) {
+  if (!props.activeTab || enc === activeTabEncoding.value) return
+
+  const tab = props.tabs.find((t) => t.path === props.activeTab)
+  if (!tab) return
+
+  if (tab.dirty) {
+    const confirmed = await confirmDialog.value!.open(
+      '切换编码',
+      '切换编码会丢失当前未保存的修改，确定继续吗？',
     )
-  } else if (!needsLib && extraLibDisposable) {
-    extraLibDisposable.dispose()
-    extraLibDisposable = null
+    if (!confirmed) return
   }
+
+  tab.encoding = enc
+  tab.dirty = false
+  resetModel(tab)
 }
 
 // ----- Tab context menu -----
@@ -158,7 +176,7 @@ async function contextCloseAll() {
 async function closeMany(paths: string[]) {
   const dirtyPaths = paths.filter((p) => {
     const t = props.tabs.find((tb) => tb.path === p)
-    return t && isDirty(t)
+    return t && t.dirty
   })
   if (dirtyPaths.length > 0) {
     const confirmed = await confirmDialog.value!.open(
@@ -198,7 +216,6 @@ function onDragOver(e: DragEvent, path: string) {
     return
   }
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  // Determine whether cursor is on the left half or right half of the target tab
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   const side: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after'
   dragOverPath.value = path
@@ -206,8 +223,6 @@ function onDragOver(e: DragEvent, path: string) {
 }
 
 function onDragLeave(path: string) {
-  // Only clear if we're still showing this tab's indicator;
-  // dragover on a sibling will overwrite it immediately.
   if (dragOverPath.value === path) {
     dragOverPath.value = null
     dragOverSide.value = null
@@ -222,16 +237,12 @@ function onDrop(_e: DragEvent, dstPath: string) {
   dragOverSide.value = null
   if (!src || src === dstPath) return
 
-  // Emit the target insertion index in the ORIGINAL list (before removing src).
-  // The parent implements the reorder by removing src first, then inserting it
-  // at an index adjusted for the removed slot.
   const tabs = props.tabs
   const srcIdx = tabs.findIndex((t) => t.path === src)
   const dstIdx = tabs.findIndex((t) => t.path === dstPath)
   if (srcIdx === -1 || dstIdx === -1) return
 
   const dstIndex = side === 'after' ? dstIdx + 1 : dstIdx
-  // No-op: dropping adjacent to itself
   if (dstIndex === srcIdx || dstIndex === srcIdx + 1) return
   emit('reorder', { src, dstIndex })
 }
@@ -251,14 +262,6 @@ function tabIcon(path: string) {
   return fileIcon(basename(path))
 }
 
-function isDirty(tab: EditorTab) {
-  return tab.content !== tab.originalContent
-}
-
-// Map: path -> disambiguating hint to show next to the basename.
-// Only populated for tabs whose basename collides with another open tab.
-// The hint is the shortest suffix of the parent directory segments that
-// uniquely identifies the file among collisions.
 const tabHints = computed<Record<string, string>>(() => {
   const hints: Record<string, string> = {}
   const byName = new Map<string, string[]>()
@@ -270,15 +273,10 @@ const tabHints = computed<Record<string, string>>(() => {
   }
   for (const [, paths] of byName) {
     if (paths.length < 2) continue
-    // Each collision group gets its own set of disambiguation hints.
-    // Strategy: for each path, walk its parent segments from the right,
-    // until the chosen suffix is unique within the group.
-    const segs = paths.map((p) => p.split('/').slice(0, -1)) // drop basename
+    const segs = paths.map((p) => p.split('/').slice(0, -1))
     for (let i = 0; i < paths.length; i++) {
       const mySegs = segs[i]!
       let depth = 1
-      // Increase depth until our rightmost `depth` parent segments are unique
-      // in the group (or we've consumed all parents).
       while (depth <= mySegs.length) {
         const mySuffix = mySegs.slice(-depth).join('/')
         const collides = segs.some((other, j) => {
@@ -302,53 +300,31 @@ function tabHint(path: string): string | null {
 function getModel(tab: EditorTab): monaco.editor.ITextModel {
   let m = models.get(tab.path)
   if (!m) {
-    // 让 Monaco 根据文件名/扩展名自动识别语言（包括 .xjs 映射到 javascript，
-    // 参见 src/monaco.ts 中的 languages.register 调用）
     const uri = monaco.Uri.file('/' + tab.path)
-    m = monaco.editor.createModel(tab.content, undefined, uri)
+    const text = decodeBytes(tab.bytes, tab.encoding)
+    m = markRaw(monaco.editor.createModel(text, undefined, uri))
     m.onDidChangeContent(() => {
-      emit('content-change', { path: tab.path, content: m!.getValue() })
+      if (!tab.dirty) {
+        tab.dirty = true
+      }
     })
     models.set(tab.path, m)
-  } else if (m.getValue() !== tab.content) {
-    m.setValue(tab.content)
   }
   return m
 }
 
-async function mountEditor() {
+function syncActiveModel() {
   if (!props.activeTab) {
-    // No active tab - editor DOM is unmounted via v-if; dispose editor instance
-    if (editor) {
-      editor.dispose()
-      editor = null
-    }
-    updateExtraLib(null)
+    activeModel.value = null
     return
   }
-  await nextTick()
-  if (!editorContainer.value) return
-
   const tab = props.tabs.find((t) => t.path === props.activeTab)
-  if (!tab) return
-
-  if (!editor) {
-    editor = monaco.editor.create(editorContainer.value, {
-      automaticLayout: true,
-      theme: 'vs',
-      fontSize: 14,
-      padding: {
-        top: 3,
-      },
-    })
-  }
-  editor.setModel(getModel(tab))
-  updateExtraLib(tab.path)
+  activeModel.value = tab ? getModel(tab) : null
 }
 
 async function requestClose(path: string) {
   const tab = props.tabs.find((t) => t.path === path)
-  if (tab && isDirty(tab)) {
+  if (tab && tab.dirty) {
     const confirmed = await confirmDialog.value!.open(
       '未保存的修改',
       `文件 "${basename(path)}" 有未保存的修改。确定关闭吗？（关闭后修改将丢失）`,
@@ -365,34 +341,21 @@ function onKeyDown(e: KeyboardEvent) {
   }
 }
 
-// ----- Read-only while saving active tab -----
-watch(
-  () => props.savingPath,
-  (savingPath) => {
-    if (!editor) return
-    editor.updateOptions({ readOnly: savingPath !== null && savingPath === props.activeTab })
-  },
-)
-
 watch(
   () => props.activeTab,
   () => {
-    void mountEditor()
-    if (editor) {
-      editor.updateOptions({
-        readOnly: props.savingPath !== null && props.savingPath === props.activeTab,
-      })
-    }
+    syncActiveModel()
   },
 )
 
 watch(
   () => props.tabs.map((t) => t.path).join('|'),
   () => {
-    // Drop models for closed tabs
+    syncActiveModel()
     const activePaths = new Set(props.tabs.map((t) => t.path))
     for (const [p, m] of models.entries()) {
       if (!activePaths.has(p)) {
+        if (activeModel.value === m) activeModel.value = null
         m.dispose()
         models.delete(p)
       }
@@ -402,26 +365,31 @@ watch(
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
-  void mountEditor()
+  syncActiveModel()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
-  if (extraLibDisposable) {
-    extraLibDisposable.dispose()
-    extraLibDisposable = null
-  }
-  if (editor) {
-    editor.dispose()
-    editor = null
-  }
   for (const m of models.values()) {
     m.dispose()
   }
   models.clear()
 })
 
-defineExpose({ requestClose })
+function getContent(path: string): string | null {
+  const m = models.get(path)
+  return m ? m.getValue() : null
+}
+
+function resetModel(tab: EditorTab) {
+  const m = models.get(tab.path)
+  if (m) {
+    const text = decodeBytes(tab.bytes, tab.encoding)
+    m.setValue(text)
+  }
+}
+
+defineExpose({ requestClose, getContent })
 </script>
 
 <style scoped>
@@ -495,10 +463,6 @@ defineExpose({ requestClose })
 }
 .editor-area.saving {
   pointer-events: none;
-}
-.editor-container {
-  width: 100%;
-  height: 100%;
 }
 .welcome {
   height: 100%;

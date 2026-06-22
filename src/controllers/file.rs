@@ -263,46 +263,20 @@ pub async fn download(
     }
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
-pub struct ContentResponse {
-    /// 文件文本内容
-    pub content: String,
-    /// 文件大小（字节）
-    pub size: u64,
-}
-
-/// 最大在线编辑文件大小: 3 MiB
-const MAX_EDIT_FILE_SIZE: u64 = 3 * 1024 * 1024;
-
-/// 读取文件内容为 text（供编辑器使用，超过 3 MiB 返回错误）
+/// 获取文件/目录的元信息
 #[utoipa::path(
     get,
-    path = "/content",
+    path = "/stat",
     params(("path" = String, Query)),
-    responses((status = OK, body = Response<ContentResponse>))
+    responses((status = OK, body = Response<Entry>))
 )]
-pub async fn content(
+pub async fn stat(
     State(ctx): State<Context>,
     Claims(_user): Claims<LoggedUser>,
     Query(q): Query<PathQuery>,
-) -> Result<Response<ContentResponse>, AppError> {
-    let metadata = ctx.storage.user().metadata(&q.path)?;
-    if !metadata.is_file() {
-        return Err(anyhow::anyhow!("not a file").into());
-    }
-    let size = metadata.len();
-    if size > MAX_EDIT_FILE_SIZE {
-        return Err(anyhow::anyhow!(
-            "file too large ({:.2} MiB), max {} MiB allowed for editing",
-            size as f64 / 1024.0 / 1024.0,
-            MAX_EDIT_FILE_SIZE / 1024 / 1024
-        )
-        .into());
-    }
-    let bytes = ctx.storage.user().read(&q.path)?;
-    let content =
-        String::from_utf8(bytes).map_err(|e| anyhow::anyhow!("file is not valid UTF-8: {}", e))?;
-    Ok(Response::ok().payload(ContentResponse { content, size }))
+) -> Result<Response<Entry>, AppError> {
+    let entry = ctx.storage.user().stat(&q.path)?;
+    Ok(Response::ok().payload(entry))
 }
 
 // ==================== 日志文件 ====================

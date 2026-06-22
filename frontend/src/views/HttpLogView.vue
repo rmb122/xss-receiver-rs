@@ -183,12 +183,14 @@
       </v-card-title>
       <v-card-text>
         <MonacoEditor
-          v-model="rawBodyContent"
+          :model-value="rawBodyText"
+          :encoding="rawBodyEncoding"
           :language="rawBodyLanguage"
           :filename="rawBodyFilename"
           height="60vh"
           read-only
           wrap-line
+          @update:encoding="rawBodyEncoding = $event"
         />
       </v-card-text>
     </v-card>
@@ -196,13 +198,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { UAParser } from 'ua-parser-js'
 import { getHttpLogRawBody, getHttpLogs } from '@/api/httpLog'
 import { getDownloadLogFileUrl } from '@/api/file'
 import type { HttpLog } from '@/types/httpLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
 import MonacoEditor from '@/components/MonacoEditor.vue'
+import { decodeBytes } from '@/utils/encoding'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
@@ -272,7 +275,9 @@ const pageSize = ref(20)
 const loading = ref(false)
 const expanded = ref<readonly string[]>([])
 const rawBodyDialog = ref(false)
-const rawBodyContent = ref('')
+const rawBodyContent = ref<Uint8Array<ArrayBuffer>>(new Uint8Array(0))
+const rawBodyEncoding = ref('UTF-8')
+const rawBodyText = computed(() => decodeBytes(rawBodyContent.value, rawBodyEncoding.value))
 const rawBodyLanguage = ref('plaintext')
 const rawBodyFilename = ref('raw-body.txt')
 const rawBodyLoadingId = ref<number | null>(null)
@@ -464,7 +469,8 @@ async function openRawBody(log: HttpLog) {
   rawBodyLoadingId.value = log.id
   try {
     const body = await getHttpLogRawBody(log.id)
-    rawBodyContent.value = new TextDecoder('utf-8', { fatal: false }).decode(body)
+    rawBodyContent.value = new Uint8Array(body)
+    rawBodyEncoding.value = 'UTF-8'
     rawBodyLanguage.value = inferRawBodyLanguage(log)
     rawBodyFilename.value = `http-log-${log.id}.body`
     rawBodyDialog.value = true

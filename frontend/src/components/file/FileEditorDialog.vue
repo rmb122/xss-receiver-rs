@@ -19,10 +19,11 @@
       <v-card-text class="pa-0">
         <MonacoEditor
           v-if="modelValue"
-          :model-value="fileContent"
+          v-model="editText"
+          :encoding="encoding"
           :filename="fileName"
           height="100%"
-          @update:model-value="handleContentChange"
+          @update:encoding="handleEncodingChange"
         />
       </v-card-text>
       <v-divider />
@@ -41,47 +42,45 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import MonacoEditor from '@/components/MonacoEditor.vue'
+import { decodeBytes, encodeBytes } from '@/utils/encoding'
 
 interface Props {
   modelValue: boolean
   fileName: string
-  fileContent: string
+  fileBytes: Uint8Array<ArrayBuffer>
   loading?: boolean
 }
 
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
-  (e: 'save', content: string): void
-  (e: 'save-and-close', content: string): void
+  (e: 'save', bytes: Uint8Array<ArrayBuffer>): void
+  (e: 'save-and-close', bytes: Uint8Array<ArrayBuffer>): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// 内部编辑内容状态
-const editContent = ref('')
+const encoding = ref('UTF-8')
+const editText = ref('')
 
-// 监听 fileContent 变化，同步到内部状态
 watch(
-  () => props.fileContent,
+  () => props.fileBytes,
   (newValue) => {
-    editContent.value = newValue
+    editText.value = decodeBytes(newValue, encoding.value)
   },
   { immediate: true },
 )
 
-// 处理内容变化
-const handleContentChange = (newContent: string) => {
-  editContent.value = newContent
+function handleEncodingChange(newEncoding: string) {
+  encoding.value = newEncoding
+  editText.value = decodeBytes(props.fileBytes, newEncoding)
 }
 
-// 处理保存
-const handleSave = () => {
-  emit('save', editContent.value)
+function handleSave() {
+  emit('save', encodeBytes(editText.value, encoding.value))
 }
 
-// 处理保存并关闭
-const handleSaveAndClose = () => {
-  emit('save-and-close', editContent.value)
+function handleSaveAndClose() {
+  emit('save-and-close', encodeBytes(editText.value, encoding.value))
 }
 </script>

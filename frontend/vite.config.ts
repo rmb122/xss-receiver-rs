@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import vuetify from 'vite-plugin-vuetify'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 export default defineConfig({
   base: './',
@@ -10,6 +11,8 @@ export default defineConfig({
     vue(),
     vuetify({ autoImport: true }),
     vueDevTools(),
+    // iconv-lite -> safer-buffer needs Node's Buffer in the browser
+    nodePolyfills({ include: ['buffer'], globals: { Buffer: true } }),
   ],
   resolve: {
     alias: {

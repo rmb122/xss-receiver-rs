@@ -20,7 +20,6 @@
           @close="closeTab"
           @close-many="closeManyTabs"
           @save="saveTab"
-          @content-change="onContentChange"
           @reorder="reorderTab"
         />
       </div>
@@ -73,11 +72,12 @@ import {
   mkdir,
   remove as apiRemove,
   rename as apiRename,
-  getFileContent,
+  getFileBytes,
   chunkedUpload,
   downloadFile,
 } from '@/api/file'
 import { showErrorToast, showSuccessToast } from '@/utils/toast'
+import iconv from 'iconv-lite'
 
 const explorer = ref<InstanceType<typeof FileExplorer>>()
 const editorTabs = ref<InstanceType<typeof FileEditorTabs>>()
@@ -135,19 +135,14 @@ function setActive(path: string) {
   activeTab.value = path
 }
 
-function onContentChange(payload: { path: string; content: string }) {
-  const t = tabs.value.find((t) => t.path === payload.path)
-  if (t) t.content = payload.content
-}
-
 async function openFile(path: string) {
   const existing = tabs.value.find((t) => t.path === path)
   if (existing) {
     activeTab.value = path
     return
   }
-  const content = await getFileContent(path)
-  tabs.value.push({ path, content, originalContent: content })
+  const bytes = await getFileBytes(path)
+  tabs.value.push({ path, bytes, encoding: 'UTF-8', dirty: false })
   activeTab.value = path
 }
 
@@ -204,15 +199,18 @@ async function saveTab(path: string) {
   const tab = tabs.value.find((t) => t.path === path)
   if (!tab) return
   if (savingPath.value !== null) return
+  const content = editorTabs.value?.getContent(path)
+  if (content === null || content === undefined) return
   savingPath.value = path
   savingProgress.value = 0
   try {
-    const blob = new Blob([tab.content], { type: 'text/plain' })
+    const encoded = iconv.encode(content, tab.encoding)
+    const blob = new Blob([encoded], { type: 'application/octet-stream' })
     await chunkedUpload(path, blob, (p) => {
       savingProgress.value = p
     })
-    tab.originalContent = tab.content
-    // refresh parent directory in tree (size/modified_time may have changed)
+    tab.bytes = new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    tab.dirty = false
     const parent = explorer.value?.findParent(path)
     if (parent) await explorer.value?.refreshNode(parent)
   } finally {
@@ -425,7 +423,7 @@ function cancelUpload() {
 
 <style scoped>
 .file-view-container {
-  height: calc(100vh - 64px);
+  height: calc(100% - 1px);
   max-width: none !important;
 }
 .file-view-layout {

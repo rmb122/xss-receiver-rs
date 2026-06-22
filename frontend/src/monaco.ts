@@ -1,5 +1,7 @@
+// 必须在导入 monaco-editor 之前加载中文语言包：
+// 它会设置 globalThis._VSCODE_NLS_MESSAGES，供 monaco 懒加载本地化字符串时读取
+import 'monaco-editor/esm/nls.messages.zh-cn.js'
 import * as monaco from 'monaco-editor'
-import { typescript } from 'monaco-editor'
 
 // @ts-ignore
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'

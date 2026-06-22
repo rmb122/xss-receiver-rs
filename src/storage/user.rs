@@ -78,30 +78,55 @@ impl UserStorage {
                 None => continue,
             };
 
-            let kind = if metadata.is_dir() {
-                EntryKind::Directory
-            } else if metadata.is_file() {
-                EntryKind::File
-            } else {
-                continue;
-            };
-
-            let size = if metadata.is_file() {
-                metadata.len()
-            } else {
-                0
-            };
-            let modified_time = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
-
-            result.push(Entry {
-                name,
-                kind,
-                size,
-                modified_time,
-            });
+            match Self::build_entry(name, &metadata) {
+                Some(e) => result.push(e),
+                None => continue,
+            }
         }
 
         Ok(result)
+    }
+
+    /// 获取单个路径的 Entry 信息
+    pub fn stat(&self, path: &str) -> anyhow::Result<Entry> {
+        let abs = self.resolve(path)?;
+        let metadata = fs::metadata(&abs)?;
+        let name = abs
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        Self::build_entry(name, &metadata)
+            .ok_or_else(|| anyhow::anyhow!("path is neither a file nor a directory"))
+    }
+
+    fn build_entry(name: String, metadata: &fs::Metadata) -> Option<Entry> {
+        let kind = if metadata.is_dir() {
+            EntryKind::Directory
+        } else if metadata.is_file() {
+            EntryKind::File
+        } else {
+            return None;
+        };
+
+        let size = if metadata.is_file() {
+            metadata.len()
+        } else {
+            0
+        };
+        let modified_time = metadata
+            .modified()
+            .ok()?
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64;
+
+        Some(Entry {
+            name,
+            kind,
+            size,
+            modified_time,
+        })
     }
 
     /// 递归列出所有文件的相对路径
