@@ -181,7 +181,7 @@
         <v-spacer />
         <v-btn icon="mdi-close" variant="text" @click="rawBodyDialog = false" />
       </v-card-title>
-      <v-card-text>
+      <v-card-text class="pa-0">
         <MonacoEditor
           :model-value="rawBodyText"
           :encoding="rawBodyEncoding"
