@@ -28,10 +28,11 @@ pub struct ParsedRequest {
     pub client_addr: SocketAddr,
     pub method: String,
     pub path: String,
+    pub raw_query: String,
     pub headers: KeyValues,
-    pub params: KeyValues,
+    pub parsed_query: KeyValues,
 
-    pub body: Vec<u8>,
+    pub raw_body: Vec<u8>,
     pub parsed_body: ParsedRequestBody,
 }
 
@@ -45,6 +46,21 @@ impl ParsedRequest {
             client_addr,
             method: request.method().to_string(),
             path: request.uri().path().to_string(),
+            raw_query: request
+                .uri()
+                .query()
+                .map(|query| format!("?{}", query))
+                .unwrap_or_default(),
+            parsed_query: {
+                let mut parsed_query = KeyValues::new();
+                let query = request.uri().query();
+                if let Some(query) = query {
+                    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+                        parsed_query.insert(key.to_string(), value.to_string());
+                    }
+                }
+                parsed_query
+            },
             headers: request
                 .headers()
                 .iter()
@@ -54,17 +70,7 @@ impl ParsedRequest {
                     headers.insert(key, value);
                     headers
                 }),
-            params: {
-                let mut params = KeyValues::new();
-                let query = request.uri().query();
-                if let Some(query) = query {
-                    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-                        params.insert(key.to_string(), value.to_string());
-                    }
-                }
-                params
-            },
-            body: Vec::new(),
+            raw_body: Vec::new(),
             parsed_body: ParsedRequestBody::None,
         };
 
@@ -78,10 +84,10 @@ impl ParsedRequest {
         if max_body_size >= 0 {
             reader
                 .take(max_body_size as u64)
-                .read_to_end(&mut parsed_request.body)
+                .read_to_end(&mut parsed_request.raw_body)
                 .await?;
         } else {
-            reader.read_to_end(&mut parsed_request.body).await?;
+            reader.read_to_end(&mut parsed_request.raw_body).await?;
         }
 
         // 解析失败, 设置为 Failed
@@ -156,7 +162,7 @@ impl ParsedRequest {
     }
 
     async fn parse_body(&mut self) -> Result<ParsedRequestBody, anyhow::Error> {
-        if self.body.len() == 0 {
+        if self.raw_body.len() == 0 {
             // 如果没有请求体, 直接返回
             return Ok(ParsedRequestBody::None);
         }
@@ -170,7 +176,7 @@ impl ParsedRequest {
 
         // try json
         if content_type.ends_with("/json") || content_type.ends_with("+json") {
-            let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
+            let body = Self::try_decode(self.raw_body.as_slice(), attrs.get("charset"));
             return Ok(ParsedRequestBody::Json(serde_json::from_slice::<Value>(
                 &body,
             )?));
@@ -178,7 +184,7 @@ impl ParsedRequest {
 
         // try x-www-form-urlencoded
         if content_type.ends_with("/x-www-form-urlencoded") {
-            let body = Self::try_decode(self.body.as_slice(), attrs.get("charset"));
+            let body = Self::try_decode(self.raw_body.as_slice(), attrs.get("charset"));
 
             let mut form = KeyValues::new();
             for (key, value) in form_urlencoded::parse(&body) {
@@ -191,7 +197,8 @@ impl ParsedRequest {
         if let (true, Some(boundary)) =
             (content_type == "multipart/form-data", attrs.get("boundary"))
         {
-            let mut multipart = Multipart::new(ReaderStream::new(self.body.as_slice()), boundary);
+            let mut multipart =
+                Multipart::new(ReaderStream::new(self.raw_body.as_slice()), boundary);
             let mut form = KeyValues::new();
             let mut file = UploadFile::new();
 

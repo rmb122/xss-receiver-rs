@@ -26,7 +26,7 @@ fn multimap_get_fn(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsRes
     }
 }
 
-/// 创建 MultiMap 的 JS 对象 + 数组结构（用于 headers、params、form）
+/// 创建 MultiMap 的 JS 对象 + 数组结构（用于 headers、query、form）
 ///
 /// 结果结构：
 /// ```js
@@ -164,7 +164,7 @@ fn create_upload_files_object(
 pub fn register_request_to_context(context: &mut Context, request: &ParsedRequest) {
     // 创建 body 的 Uint8Array
     let mut aligned_vec: AlignedVec<u8> = AlignedVec::new(64);
-    aligned_vec.extend_from_slice(&request.body);
+    aligned_vec.extend_from_slice(&request.raw_body);
     let array_buffer = JsArrayBuffer::from_byte_block(aligned_vec, context)
         .expect("failed to create array buffer");
     let uint8_array = JsUint8Array::from_array_buffer(array_buffer, context)
@@ -172,8 +172,8 @@ pub fn register_request_to_context(context: &mut Context, request: &ParsedReques
 
     let headers_obj =
         create_multimap_object(context, &request.headers).expect("failed to create headers object");
-    let params_obj =
-        create_multimap_object(context, &request.params).expect("failed to create params object");
+    let query_obj = create_multimap_object(context, &request.parsed_query)
+        .expect("failed to create query object");
 
     // 处理 parsed_body — 始终创建 json, form, files 属性
     let empty_form = MultiMap::new();
@@ -231,8 +231,8 @@ pub fn register_request_to_context(context: &mut Context, request: &ParsedReques
             Attribute::READONLY | Attribute::ENUMERABLE,
         )
         .property(
-            js_string!("params"),
-            params_obj,
+            js_string!("query"),
+            query_obj,
             Attribute::READONLY | Attribute::ENUMERABLE,
         )
         .property(

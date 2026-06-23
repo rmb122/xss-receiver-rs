@@ -14,7 +14,7 @@ use response::ResponseCell;
 /// 注册所有变量到 JS 上下文的主入口函数
 ///
 /// 该函数会注册以下全局对象：
-/// - request: 请求对象，包含 method, path, headers, params, body 等
+/// - request: 请求对象，包含 method, path, headers, query, body 等
 /// - response: 响应对象，包含 send, sendStatus, sendHeader 等方法
 /// - storage: 用户文件存储对象，包含 list, list_all, create_directory, write_file, append_file, delete, rename
 /// - utils: 工具函数，包含 base64Encode, base64Decode, urlEncode, urlDecode

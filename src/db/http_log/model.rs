@@ -41,8 +41,9 @@ pub struct HttpLog {
     pub location: String,
     pub method: String,
     pub path: String,
+    pub raw_query: String,
     #[schema(value_type = serde_json::Object)]
-    pub arg: diesel_bytea::Json<KeyValues>,
+    pub parsed_query: diesel_bytea::Json<KeyValues>,
     #[schema(value_type = serde_json::Object)]
     pub header: diesel_bytea::Json<KeyValues>,
     pub parsed_body_type: BodyKind,
@@ -65,7 +66,8 @@ pub struct NewHttpLog {
     pub location: String,
     pub method: String,
     pub path: String,
-    pub arg: diesel_bytea::Json<KeyValues>,
+    pub raw_query: String,
+    pub parsed_query: diesel_bytea::Json<KeyValues>,
     pub header: diesel_bytea::Json<KeyValues>,
     pub parsed_body_type: BodyKind,
     pub parsed_body: diesel_bytea::StringBytes,

@@ -10,7 +10,8 @@ export interface HttpLog {
   location: string
   method: string
   path: string
-  arg: KeyValues
+  raw_query: string
+  parsed_query: KeyValues
   header: KeyValues
   parsed_body_type: BodyKind
   parsed_body: string

@@ -71,7 +71,7 @@ declare const request: {
   /** 请求头 MultiMap（key 格式为首字母大写，如 "Content-Type"） */
   readonly headers: MultiMap;
   /** URL 查询参数 MultiMap */
-  readonly params: MultiMap;
+  readonly query: MultiMap;
   /**
    * JSON 解析后的请求体。
    * 当 Content-Type 为 JSON 类型时，包含解析后的 JSON 对象；

@@ -10,7 +10,8 @@ diesel::table! {
         #[max_length = 255]
         method -> Varchar,
         path -> Varchar,
-        arg -> Binary,
+        raw_query -> Varchar,
+        parsed_query -> Binary,
         header -> Binary,
         parsed_body_type -> Int2,
         parsed_body -> Binary,

@@ -64,6 +64,7 @@
                       location: item.location,
                       method: item.method,
                       path: item.path,
+                      raw_query: item.raw_query,
                       parsed_body_type: item.parsed_body_type,
                       create_time: item.create_time,
                     }"
@@ -72,12 +73,12 @@
                 </div>
 
                 <!-- URL 参数 -->
-                <div v-if="Object.keys(item.arg).length > 0" class="mb-3">
+                <div v-if="Object.keys(item.parsed_query).length > 0" class="mb-3">
                   <div class="text-subtitle-2 font-weight-bold mb-1">
                     <v-icon size="small" class="mr-1">mdi-link-variant</v-icon>
                     URL 参数
                   </div>
-                  <JsonHighlight :data="item.arg" max-height="200px" />
+                  <JsonHighlight :data="item.parsed_query" max-height="200px" />
                 </div>
 
                 <!-- 请求头 -->
@@ -372,9 +373,9 @@ function getDataSummary(log: HttpLog): string {
   const parts: string[] = []
 
   // GET keys
-  const argKeys = Object.keys(log.arg || {})
-  if (argKeys.length > 0) {
-    parts.push(`GET: [${argKeys.join(', ')}]`)
+  const queryKeys = Object.keys(log.parsed_query || {})
+  if (queryKeys.length > 0) {
+    parts.push(`GET: [${queryKeys.join(', ')}]`)
   }
 
   // POST keys
