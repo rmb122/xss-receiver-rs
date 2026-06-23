@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MonacoEditor from '@/components/MonacoEditor.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { decodeBytes, encodeBytes } from '@/utils/encoding'
@@ -105,4 +105,21 @@ function handleSave() {
 function handleSaveAndClose() {
   emit('save-and-close', encodeBytes(editText.value, encoding.value))
 }
+
+function onKeyDown(e: KeyboardEvent) {
+  if (!props.modelValue || props.loading) return
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    e.stopPropagation()
+    handleSave()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeyDown, true)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown, true)
+})
 </script>
