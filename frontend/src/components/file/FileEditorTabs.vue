@@ -42,12 +42,13 @@
         <v-icon size="64" color="grey-lighten-1">mdi-file-document-outline</v-icon>
         <div class="text-h6 mt-4 text-grey">从左侧选择文件打开</div>
       </div>
-      <MonacoEditor
+      <MonacoRawEditor
         v-else
         :model="activeModel"
         :encoding="activeTabEncoding"
         :read-only="savingPath !== null && savingPath === activeTab"
         height="100%"
+        @content-change="onEditorContentChange"
         @update:encoding="onEditorEncodingChange"
       />
     </div>
@@ -79,7 +80,7 @@ import { ref, shallowRef, markRaw, watch, computed, onMounted, onBeforeUnmount }
 import { monaco } from '@/monaco'
 import { fileIcon } from '@/utils/fileIcon'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import MonacoEditor from '@/components/MonacoEditor.vue'
+import MonacoRawEditor from '@/components/MonacoRawEditor.vue'
 import { decodeBytes } from '@/utils/encoding'
 
 export interface EditorTab {
@@ -107,6 +108,7 @@ const emit = defineEmits<{
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
 const models = new Map<string, monaco.editor.ITextModel>()
+const suppressDirtyPaths = new Set<string>()
 // shallowRef + markRaw: never let Vue deeply proxy a monaco model, or its
 // internals break and the editor spins / hangs the page.
 const activeModel = shallowRef<monaco.editor.ITextModel | null>(null)
@@ -303,14 +305,17 @@ function getModel(tab: EditorTab): monaco.editor.ITextModel {
     const uri = monaco.Uri.file('/' + tab.path)
     const text = decodeBytes(tab.bytes, tab.encoding)
     m = markRaw(monaco.editor.createModel(text, undefined, uri))
-    m.onDidChangeContent(() => {
-      if (!tab.dirty) {
-        tab.dirty = true
-      }
-    })
     models.set(tab.path, m)
   }
   return m
+}
+
+function onEditorContentChange(model: monaco.editor.ITextModel) {
+  const tab = props.tabs.find((t) => models.get(t.path) === model)
+  if (!tab || suppressDirtyPaths.has(tab.path)) return
+  if (!tab.dirty) {
+    tab.dirty = true
+  }
 }
 
 function syncActiveModel() {
@@ -385,7 +390,12 @@ function resetModel(tab: EditorTab) {
   const m = models.get(tab.path)
   if (m) {
     const text = decodeBytes(tab.bytes, tab.encoding)
-    m.setValue(text)
+    suppressDirtyPaths.add(tab.path)
+    try {
+      m.setValue(text)
+    } finally {
+      suppressDirtyPaths.delete(tab.path)
+    }
   }
 }
 

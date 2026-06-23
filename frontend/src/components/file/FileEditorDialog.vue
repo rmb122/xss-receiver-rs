@@ -19,10 +19,11 @@
       <v-card-text class="pa-0">
         <MonacoEditor
           v-if="modelValue"
-          v-model="editText"
+          :model-value="editText"
           :encoding="encoding"
           :filename="fileName"
           height="100%"
+          @update:model-value="handleTextChange"
           @update:encoding="handleEncodingChange"
         />
       </v-card-text>
@@ -36,12 +37,14 @@
         </v-btn>
       </v-card-actions>
     </v-card>
+    <ConfirmDialog ref="confirmDialog" />
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import MonacoEditor from '@/components/MonacoEditor.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { decodeBytes, encodeBytes } from '@/utils/encoding'
 
 interface Props {
@@ -60,20 +63,39 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 const encoding = ref('UTF-8')
 const editText = ref('')
+const dirty = ref(false)
 
 watch(
   () => props.fileBytes,
   (newValue) => {
     editText.value = decodeBytes(newValue, encoding.value)
+    dirty.value = false
   },
   { immediate: true },
 )
 
-function handleEncodingChange(newEncoding: string) {
+function handleTextChange(value: string) {
+  editText.value = value
+  dirty.value = true
+}
+
+async function handleEncodingChange(newEncoding: string) {
+  if (newEncoding === encoding.value) return
+
+  if (dirty.value) {
+    const confirmed = await confirmDialog.value!.open(
+      '切换编码',
+      '切换编码会丢失当前未保存的修改，确定继续吗？',
+    )
+    if (!confirmed) return
+  }
+
   encoding.value = newEncoding
   editText.value = decodeBytes(props.fileBytes, newEncoding)
+  dirty.value = false
 }
 
 function handleSave() {

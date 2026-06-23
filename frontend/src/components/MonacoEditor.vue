@@ -1,35 +1,25 @@
 <template>
-  <div ref="editorContainer" :style="{ height: height, width: '100%' }"></div>
-  <v-dialog v-model="encodingDialog" max-width="360px">
-    <v-card>
-      <v-card-title>切换编码</v-card-title>
-      <v-card-text class="pa-0">
-        <v-list density="compact">
-          <v-list-item
-            v-for="enc in SUPPORTED_ENCODINGS"
-            :key="enc"
-            :active="enc === encoding"
-            @click="selectEncoding(enc)"
-          >
-            <v-list-item-title>{{ enc }}</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-card-text>
-    </v-card>
-  </v-dialog>
+  <MonacoRawEditor
+    ref="rawEditor"
+    :model="internalModel"
+    :encoding="encoding"
+    :height="height"
+    :read-only="readOnly"
+    :wrap-line="wrapLine"
+    :hide-encoding-action="hideEncodingAction"
+    @content-change="handleContentChange"
+    @update:encoding="$emit('update:encoding', $event)"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { monaco } from '@/monaco'
-import { typescript, type IDisposable } from 'monaco-editor'
-import { scriptEngineTypes } from '@/script-engine-types'
-import { SUPPORTED_ENCODINGS } from '@/utils/encoding'
+import MonacoRawEditor from '@/components/MonacoRawEditor.vue'
 
 const props = withDefaults(
   defineProps<{
     modelValue?: string
-    model?: monaco.editor.ITextModel | null
     encoding?: string
     language?: string
     filename?: string
@@ -40,7 +30,6 @@ const props = withDefaults(
   }>(),
   {
     modelValue: '',
-    model: null,
     encoding: 'UTF-8',
     language: '',
     filename: '',
@@ -56,41 +45,8 @@ const emit = defineEmits<{
   'update:encoding': [value: string]
 }>()
 
-const editorContainer = ref<HTMLElement | null>(null)
-const encodingDialog = ref(false)
-let editor: monaco.editor.IStandaloneCodeEditor | null = null
-let internalModel: monaco.editor.ITextModel | null = null
-let extraLibDisposable: IDisposable | null = null
-let encodingActionDisposable: IDisposable | null = null
-let suppressEmit = false
-
-function selectEncoding(enc: string) {
-  encodingDialog.value = false
-  if (enc !== props.encoding) {
-    emit('update:encoding', enc)
-  }
-}
-
-function activeFilename(): string {
-  if (props.model) {
-    const path = props.model.uri.path
-    return path.startsWith('/') ? path.slice(1) : path
-  }
-  return props.filename
-}
-
-function updateExtraLib(filename: string) {
-  if (extraLibDisposable) {
-    extraLibDisposable.dispose()
-    extraLibDisposable = null
-  }
-  if (filename.endsWith('.xjs')) {
-    extraLibDisposable = typescript.javascriptDefaults.addExtraLib(
-      scriptEngineTypes,
-      'ts:script-engine.d.ts',
-    )
-  }
-}
+const rawEditor = ref<InstanceType<typeof MonacoRawEditor>>()
+const suppressEmit = ref(false)
 
 function containsExtension(filename: string): boolean {
   const parts = filename.split(/\\|\//g)
@@ -114,131 +70,62 @@ function getModelLanguage(language?: string, filename?: string): string {
   return 'plaintext'
 }
 
-function createInternalModel(): monaco.editor.ITextModel {
+function createInternalModel(value = props.modelValue): monaco.editor.ITextModel {
   const lang = getModelLanguage(props.language, props.filename)
-  return monaco.editor.createModel(props.modelValue, lang)
+  const filename = props.filename || 'model'
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const uri = monaco.Uri.from({
+    scheme: 'inmemory',
+    authority: 'monaco-editor',
+    path: `/${id}/${filename}`,
+  })
+  return markRaw(monaco.editor.createModel(value, lang, uri))
 }
 
-function resolveModel(): monaco.editor.ITextModel {
-  if (props.model) return props.model
-  if (!internalModel) {
-    internalModel = createInternalModel()
+const internalModel = shallowRef<monaco.editor.ITextModel>(createInternalModel())
+
+const modelLanguage = computed(() => getModelLanguage(props.language, props.filename))
+
+function handleContentChange(model: monaco.editor.ITextModel) {
+  if (!suppressEmit.value && model === internalModel.value) {
+    emit('update:modelValue', model.getValue())
   }
-  return internalModel
 }
-
-function registerEncodingAction() {
-  if (encodingActionDisposable) {
-    encodingActionDisposable.dispose()
-    encodingActionDisposable = null
-  }
-  if (!editor || props.hideEncodingAction) return
-  encodingActionDisposable = editor.addAction({
-    id: 'switch-encoding',
-    label: `切换编码 (当前: ${props.encoding})`,
-    contextMenuGroupId: '9_encoding',
-    contextMenuOrder: 1,
-    run: () => {
-      encodingDialog.value = true
-    },
-  })
-}
-
-onMounted(() => {
-  if (!editorContainer.value) return
-
-  updateExtraLib(activeFilename())
-
-  editor = monaco.editor.create(editorContainer.value, {
-    model: resolveModel(),
-    theme: 'vs',
-    readOnly: props.readOnly,
-    wordWrap: props.wrapLine ? 'on' : 'off',
-    automaticLayout: true,
-    fontSize: 14,
-    padding: {
-      top: 3,
-    },
-  })
-
-  editor.onDidChangeModelContent(() => {
-    // Only the internal-model case owns the text value via v-model. When an
-    // external model is supplied the parent tracks changes on the model itself.
-    if (editor && !props.model && !suppressEmit) {
-      emit('update:modelValue', editor.getValue())
-    }
-  })
-
-  registerEncodingAction()
-})
-
-watch(
-  () => props.model,
-  (newModel) => {
-    if (!editor) return
-    editor.setModel(newModel ?? resolveModel())
-    updateExtraLib(activeFilename())
-  },
-)
 
 watch(
   () => props.modelValue,
   (newVal) => {
-    if (!editor || props.model) return
-    if (editor.getValue() !== newVal) {
-      suppressEmit = true
-      editor.setValue(newVal)
-      suppressEmit = false
+    if (internalModel.value.getValue() !== newVal) {
+      suppressEmit.value = true
+      try {
+        internalModel.value.setValue(newVal)
+      } finally {
+        suppressEmit.value = false
+      }
     }
   },
 )
 
-watch(
-  () => props.encoding,
-  () => {
-    registerEncodingAction()
-  },
-)
-
-watch(
-  () => props.readOnly,
-  (readOnly) => {
-    editor?.updateOptions({ readOnly })
-  },
-)
-
-watch([() => props.language, () => props.filename], ([newLang, newFilename]) => {
-  if (props.model) return
-  if (editor) {
-    const model = editor.getModel()
-    if (model) {
-      const lang = getModelLanguage(newLang, newFilename)
-      monaco.editor.setModelLanguage(model, lang)
-    }
-  }
-  updateExtraLib(newFilename ?? '')
+watch(modelLanguage, (language) => {
+  monaco.editor.setModelLanguage(internalModel.value, language)
 })
 
+watch(
+  () => props.filename,
+  () => {
+    const oldModel = internalModel.value
+    internalModel.value = createInternalModel(oldModel.getValue())
+    void nextTick(() => {
+      oldModel.dispose()
+    })
+  },
+)
+
 onBeforeUnmount(() => {
-  if (encodingActionDisposable) {
-    encodingActionDisposable.dispose()
-    encodingActionDisposable = null
-  }
-  if (extraLibDisposable) {
-    extraLibDisposable.dispose()
-    extraLibDisposable = null
-  }
-  if (editor) {
-    editor.dispose()
-    editor = null
-  }
-  if (internalModel) {
-    internalModel.dispose()
-    internalModel = null
-  }
+  internalModel.value.dispose()
 })
 
 defineExpose({
-  getEditor: () => editor,
+  getEditor: () => rawEditor.value?.getEditor() ?? null,
 })
 </script>

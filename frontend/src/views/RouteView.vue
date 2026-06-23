@@ -192,9 +192,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { getAllRoutes, createRoute, updateRoute, deleteRoute } from '@/api/route'
-import { listAll, getFileBytes, chunkedUpload } from '@/api/file'
+import { listAll, getFileBytes, FileTooLargeError, chunkedUpload } from '@/api/file'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
-import { formatTime } from '@/utils/format'
+import { formatFileSize, formatTime } from '@/utils/format'
 import { expandAllGroups } from '@/utils/table'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FileEditorDialog from '@/components/file/FileEditorDialog.vue'
@@ -381,7 +381,16 @@ async function openHandlerEditor(route: Route) {
     return
   }
   const filename = route.handler.split('/').pop() || route.handler
-  const bytes = await getFileBytes(route.handler)
+  let bytes: Uint8Array<ArrayBuffer>
+  try {
+    bytes = await getFileBytes(route.handler)
+  } catch (err) {
+    if (err instanceof FileTooLargeError) {
+      showErrorToast(`文件过大 (${formatFileSize(err.size)}), 无法在线编辑, 请下载后查看`)
+      return
+    }
+    throw err
+  }
 
   editingHandlerFile.value = {
     name: filename,
@@ -396,6 +405,7 @@ async function handleSaveHandlerFile(bytes: Uint8Array<ArrayBuffer>) {
   try {
     savingHandler.value = true
     await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
+    editingHandlerFile.value.bytes = bytes
     showSuccessToast('保存成功')
   } finally {
     savingHandler.value = false
@@ -407,6 +417,7 @@ async function handleSaveHandlerFileAndClose(bytes: Uint8Array<ArrayBuffer>) {
   try {
     savingHandler.value = true
     await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
+    editingHandlerFile.value.bytes = bytes
     showSuccessToast('保存成功')
     handlerEditorDialog.value = false
   } finally {

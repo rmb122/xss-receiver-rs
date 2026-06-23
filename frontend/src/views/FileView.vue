@@ -73,10 +73,12 @@ import {
   remove as apiRemove,
   rename as apiRename,
   getFileBytes,
+  FileTooLargeError,
   chunkedUpload,
   downloadFile,
 } from '@/api/file'
 import { showErrorToast, showSuccessToast } from '@/utils/toast'
+import { formatFileSize } from '@/utils/format'
 import iconv from 'iconv-lite'
 
 const explorer = ref<InstanceType<typeof FileExplorer>>()
@@ -141,7 +143,16 @@ async function openFile(path: string) {
     activeTab.value = path
     return
   }
-  const bytes = await getFileBytes(path)
+  let bytes: Uint8Array<ArrayBuffer>
+  try {
+    bytes = await getFileBytes(path)
+  } catch (err) {
+    if (err instanceof FileTooLargeError) {
+      showErrorToast(`文件过大 (${formatFileSize(err.size)}), 无法在线编辑, 请下载后查看`)
+      return
+    }
+    throw err
+  }
   tabs.value.push({ path, bytes, encoding: 'UTF-8', dirty: false })
   activeTab.value = path
 }

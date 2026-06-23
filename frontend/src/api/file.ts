@@ -99,15 +99,31 @@ export async function chunkedUpload(
 
 // ===== 下载/读取 =====
 
-export function getFileBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
-  return request
-    .raw<ArrayBuffer>({
-      method: 'GET',
-      url: `/file/download`,
-      params: { path },
-      responseType: 'arraybuffer',
-    })
-    .then((buf) => new Uint8Array(buf))
+export const MAX_EDIT_FILE_SIZE = 3 * 1024 * 1024
+
+export class FileTooLargeError extends Error {
+  constructor(
+    public readonly size: number,
+    public readonly maxSize: number,
+  ) {
+    super('file too large for online editing')
+    this.name = 'FileTooLargeError'
+  }
+}
+
+export async function getFileBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
+  const entry = await statFile(path)
+  if (entry.size > MAX_EDIT_FILE_SIZE) {
+    throw new FileTooLargeError(entry.size, MAX_EDIT_FILE_SIZE)
+  }
+
+  const buf = await request.raw<ArrayBuffer>({
+    method: 'GET',
+    url: `/file/download`,
+    params: { path },
+    responseType: 'arraybuffer',
+  })
+  return new Uint8Array(buf)
 }
 
 export function downloadFile(path: string) {
