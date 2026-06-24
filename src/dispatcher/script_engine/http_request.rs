@@ -161,7 +161,7 @@ fn create_upload_files_object(
 }
 
 /// 注册 Request 对象到 JS 上下文
-pub fn register_request_to_context(context: &mut Context, request: &ParsedRequest) {
+pub fn register_http_request_to_context(context: &mut Context, request: &ParsedRequest) {
     // 创建 body 的 Uint8Array
     let mut aligned_vec: AlignedVec<u8> = AlignedVec::new(64);
     aligned_vec.extend_from_slice(&request.raw_body);

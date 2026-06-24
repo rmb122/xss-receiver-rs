@@ -11,7 +11,7 @@ use crate::storage::{Storage, UserStorage};
 use crate::utils::parsed_request::ParsedRequest;
 
 use super::DispatchRoute;
-use super::script_engine::register_vars_to_context;
+use super::script_engine::register_http_vars_to_context;
 
 #[async_trait]
 pub trait HttpRouteHandler: Sync + Send {
@@ -151,7 +151,7 @@ impl HttpRouteHandler for ScriptHandler {
         // 在新线程中运行 js
         let (result, response) = task::spawn_blocking(move || {
             let mut context = Context::default();
-            let response = register_vars_to_context(&mut context, &request, user_storage);
+            let response = register_http_vars_to_context(&mut context, &request, user_storage);
             let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> = Source::from_bytes(script.as_bytes());
             let script = Script::parse(source, None, &mut context)?;
 

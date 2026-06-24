@@ -2,8 +2,8 @@
 pub mod dns_request;
 pub mod dns_response;
 mod helpers;
-pub mod request;
-pub mod response;
+pub mod http_request;
+pub mod http_response;
 pub mod storage;
 pub mod utils;
 
@@ -13,7 +13,7 @@ use crate::utils::parsed_request::ParsedRequest;
 use boa_engine::Context;
 use boa_gc::Gc;
 use dns_response::DnsResponseCell;
-use response::ResponseCell;
+use http_response::HttpResponseCell;
 
 /// 注册所有变量到 JS 上下文的主入口函数
 ///
@@ -25,13 +25,13 @@ use response::ResponseCell;
 ///
 /// # 返回值
 /// 返回 ResponseCell 的 Gc 指针，用于后续获取响应数据
-pub fn register_vars_to_context(
+pub fn register_http_vars_to_context(
     context: &mut Context,
     request: &ParsedRequest,
     user_storage: UserStorage,
-) -> Gc<ResponseCell> {
-    let response_cell = response::register_response_to_context(context);
-    request::register_request_to_context(context, request);
+) -> Gc<HttpResponseCell> {
+    let response_cell = http_response::register_response_to_context(context);
+    http_request::register_http_request_to_context(context, request);
     storage::register_storage_to_context(context, user_storage);
     utils::register_utils_to_context(context);
     response_cell

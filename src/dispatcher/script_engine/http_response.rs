@@ -14,16 +14,16 @@ use super::storage::get_storage_from_context;
 
 /// Response 数据结构
 #[derive(Clone)]
-pub struct Response {
+pub struct HttpResponse {
     pub status_code: u16,
     pub headers: HashMap<String, Vec<String>>,
     pub body_file: Option<String>,
     pub body: Vec<u8>,
 }
 
-impl Response {
+impl HttpResponse {
     fn new() -> Self {
-        Response {
+        HttpResponse {
             status_code: 200,
             headers: HashMap::new(),
             body_file: None,
@@ -33,31 +33,31 @@ impl Response {
 }
 
 /// ResponseCell 用于在 JS 引擎中共享 Response
-pub struct ResponseCell {
-    pub cell: RefCell<Response>,
+pub struct HttpResponseCell {
+    pub cell: RefCell<HttpResponse>,
 }
 
-impl Finalize for ResponseCell {}
+impl Finalize for HttpResponseCell {}
 
 // SAFETY: Response 里面不存储来自 js 引擎的东西, 不用具体实现 trace
-unsafe impl Trace for ResponseCell {
+unsafe impl Trace for HttpResponseCell {
     empty_trace!();
 }
 
 // SAFETY: JS 引擎单线程的
-unsafe impl Sync for ResponseCell {}
+unsafe impl Sync for HttpResponseCell {}
 
-impl ResponseCell {
+impl HttpResponseCell {
     fn new() -> Self {
-        ResponseCell {
-            cell: RefCell::new(Response::new()),
+        HttpResponseCell {
+            cell: RefCell::new(HttpResponse::new()),
         }
     }
 }
 
 /// 注册 Response 对象到 JS 上下文
-pub fn register_response_to_context(context: &mut Context) -> Gc<ResponseCell> {
-    let response = Gc::new(ResponseCell::new());
+pub fn register_response_to_context(context: &mut Context) -> Gc<HttpResponseCell> {
+    let response = Gc::new(HttpResponseCell::new());
     context.insert_data(response.clone());
 
     let mut object_builder = ObjectInitializer::new(context);

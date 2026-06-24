@@ -1,7 +1,7 @@
 use boa_engine::{Context, JsError, JsResult, JsValue, js_string};
 use std::cell::RefMut;
 
-use super::response::Response;
+use super::http_response::HttpResponse;
 
 /// 确保 Option 值存在，否则返回错误
 pub(crate) fn ensure_exists<T>(option: Option<T>, msg: &str) -> JsResult<T> {
@@ -45,12 +45,12 @@ pub(crate) fn check_argument_count(args: &[JsValue], count: usize) -> JsResult<(
 }
 
 /// 从 Context 获取 Response 对象
-pub(crate) fn get_response_from_context(ctx: &mut Context) -> JsResult<RefMut<'_, Response>> {
-    use super::response::ResponseCell;
+pub(crate) fn get_response_from_context(ctx: &mut Context) -> JsResult<RefMut<'_, HttpResponse>> {
+    use super::http_response::HttpResponseCell;
     use boa_gc::Gc;
 
     Ok(ensure_exists(
-        ctx.get_data::<Gc<ResponseCell>>(),
+        ctx.get_data::<Gc<HttpResponseCell>>(),
         "failed get response from context",
     )?
     .cell
