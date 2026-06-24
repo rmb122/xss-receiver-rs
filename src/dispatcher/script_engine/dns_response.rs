@@ -35,11 +35,11 @@ pub struct DnsResponseCell {
 
 impl Finalize for DnsResponseCell {}
 
+// SAFETY: ScriptDnsResponse only stores Rust-owned DNS response data and does not contain
+// any Boa GC-managed JavaScript values.
 unsafe impl Trace for DnsResponseCell {
     empty_trace!();
 }
-
-unsafe impl Sync for DnsResponseCell {}
 
 impl DnsResponseCell {
     fn new() -> Self {

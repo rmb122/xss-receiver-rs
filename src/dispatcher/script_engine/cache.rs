@@ -227,11 +227,11 @@ pub struct ScriptCacheCell {
 
 impl Finalize for ScriptCacheCell {}
 
+// SAFETY: ScriptCache stores only Rust-owned cache data and a thread-safe Moka cache; it does
+// not contain any Boa GC-managed JavaScript values.
 unsafe impl Trace for ScriptCacheCell {
     empty_trace!();
 }
-
-unsafe impl Sync for ScriptCacheCell {}
 
 fn get_cache_from_context(ctx: &mut Context) -> JsResult<Gc<ScriptCacheCell>> {
     ensure_exists(

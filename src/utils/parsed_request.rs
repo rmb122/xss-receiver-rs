@@ -114,6 +114,8 @@ impl ParsedRequest {
             }
         });
 
+        // SAFETY: key_bytes came from a valid UTF-8 String, and the loop only changes ASCII
+        // bytes to other ASCII bytes. Non-ASCII bytes are left unchanged by to_ascii_uppercase.
         unsafe { String::from_utf8_unchecked(key_bytes) }
     }
 

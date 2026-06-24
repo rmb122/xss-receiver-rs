@@ -44,9 +44,6 @@ unsafe impl Trace for HttpResponseCell {
     empty_trace!();
 }
 
-// SAFETY: JS 引擎单线程的
-unsafe impl Sync for HttpResponseCell {}
-
 impl HttpResponseCell {
     fn new() -> Self {
         HttpResponseCell {

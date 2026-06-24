@@ -21,9 +21,6 @@ unsafe impl Trace for UserStorageCell {
     empty_trace!();
 }
 
-// SAFETY: JS 引擎是单线程的
-unsafe impl Sync for UserStorageCell {}
-
 /// 从 boa 上下文中取出 UserStorage
 pub(crate) fn get_storage_from_context(ctx: &mut Context) -> JsResult<Gc<UserStorageCell>> {
     ensure_exists(
