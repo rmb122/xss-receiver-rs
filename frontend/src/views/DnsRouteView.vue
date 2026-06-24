@@ -121,23 +121,12 @@
             class="mb-2"
           />
           <v-combobox
-            v-if="form.handler_kind === 'SCRIPT'"
             v-model="form.handler"
             :items="handlerOptions"
             :loading="handlerLoading"
-            label="脚本文件"
+            label="处理文件"
             variant="outlined"
             density="compact"
-            class="mb-2"
-          />
-          <v-textarea
-            v-else-if="form.handler_kind === 'STATIC'"
-            v-model="form.handler"
-            label="响应 JSON"
-            variant="outlined"
-            density="compact"
-            rows="7"
-            auto-grow
             class="mb-2"
           />
           <v-text-field
@@ -248,7 +237,7 @@ const computedHeaders = computed(() => {
     { title: '匹配方式', key: 'pattern_kind', width: '180px', align: 'center' },
     { title: '匹配域名', key: 'pattern' },
     { title: '处理方式', key: 'handler_kind', width: '150px', align: 'center' },
-    { title: 'Handler', key: 'handler' },
+    { title: '处理文件', key: 'handler' },
     { title: '优先级', key: 'priority', width: '100px', align: 'center' },
     { title: '超时时间', key: 'timeout', width: '130px' },
     { title: '记录日志', key: 'write_log', width: '130px', align: 'center' },
@@ -281,8 +270,7 @@ const form = ref({
   timeout: 5000,
   catalog: '',
   handler_kind: 'STATIC' as HandlerKind,
-  handler:
-    '{\n  "rcode": "NOERROR",\n  "ttl": 60,\n  "answers": [\n    { "type": "A", "value": "1.2.3.4" }\n  ]\n}',
+  handler: 'dns-response.djson',
   write_log: true,
   comment: '',
 })
@@ -295,8 +283,7 @@ function resetForm() {
     timeout: 5000,
     catalog: '',
     handler_kind: 'STATIC',
-    handler:
-      '{\n  "rcode": "NOERROR",\n  "ttl": 60,\n  "answers": [\n    { "type": "A", "value": "1.2.3.4" }\n  ]\n}',
+    handler: 'dns-response.djson',
     write_log: true,
     comment: '',
   }
@@ -389,10 +376,6 @@ async function handleDelete(route: DnsRoute) {
 
 // 打开 Handler 文件编辑器
 async function openHandlerEditor(route: DnsRoute) {
-  if (route.handler_kind !== 'SCRIPT') {
-    showErrorToast('只有 SCRIPT handler 可以编辑文件')
-    return
-  }
   if (!route.handler) {
     showErrorToast('handler 路径为空')
     return

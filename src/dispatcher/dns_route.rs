@@ -135,9 +135,9 @@ impl DnsRoute {
         };
 
         let handler: Box<dyn DnsRouteHandler> = match value.handler_kind {
-            db::dns_route::model::HandlerKind::STATIC => {
-                Box::new(StaticDnsHandler::new(serde_json::from_str(&value.handler)?))
-            }
+            db::dns_route::model::HandlerKind::STATIC => Box::new(StaticDnsHandler::new(
+                storage.user().absolute_path(&value.handler)?,
+            )),
             db::dns_route::model::HandlerKind::SCRIPT => Box::new(ScriptDnsHandler::new(
                 storage.user().absolute_path(&value.handler)?,
                 value.timeout,
@@ -170,12 +170,14 @@ pub fn normalize_dns_name(name: &str) -> String {
 }
 
 pub struct StaticDnsHandler {
-    response: DnsResponse,
+    filename: String,
 }
 
 impl StaticDnsHandler {
-    pub fn new(response: DnsResponse) -> Self {
-        Self { response }
+    pub fn new<T: Into<String>>(filename: T) -> Self {
+        Self {
+            filename: filename.into(),
+        }
     }
 }
 
@@ -185,9 +187,11 @@ impl DnsRouteHandler for StaticDnsHandler {
         &self,
         request: DnsRequest,
     ) -> anyhow::Result<(serde_json::Value, Option<DnsResponse>)> {
+        let response: DnsResponse =
+            serde_json::from_str(&tokio::fs::read_to_string(&self.filename).await?)?;
         Ok((
             serde_json::Value::Null,
-            Some(self.response.filter_for_query(request.query_type)),
+            Some(response.filter_for_query(request.query_type)),
         ))
     }
 }

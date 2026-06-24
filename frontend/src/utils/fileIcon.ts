@@ -50,6 +50,7 @@ const EXT_MAP: Record<string, FileIcon> = {
 
   // Data / config
   json: { icon: 'mdi-code-json', color: 'amber-darken-2' },
+  djson: { icon: 'mdi-code-json', color: 'cyan-darken-2' },
   yaml: { icon: 'mdi-cog-outline', color: 'red' },
   yml: { icon: 'mdi-cog-outline', color: 'red' },
   toml: { icon: 'mdi-cog-outline', color: 'orange-darken-2' },

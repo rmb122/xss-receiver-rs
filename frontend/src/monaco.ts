@@ -2,6 +2,7 @@
 // 它会设置 globalThis._VSCODE_NLS_MESSAGES，供 monaco 懒加载本地化字符串时读取
 import 'monaco-editor/esm/nls.messages.zh-cn.js'
 import * as monaco from 'monaco-editor'
+import { jsonDefaults } from 'monaco-editor/esm/vs/language/json/monaco.contribution'
 
 // @ts-ignore
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
@@ -28,6 +29,59 @@ self.MonacoEnvironment = {
 monaco.languages.register({
   id: 'javascript',
   extensions: ['.hjs', '.djs'],
+})
+
+monaco.languages.register({
+  id: 'json',
+  extensions: ['.djson'],
+})
+
+jsonDefaults.setDiagnosticsOptions({
+  validate: true,
+  schemas: [
+    {
+      uri: 'schema://xss-receiver/dns-response.djson',
+      fileMatch: ['*.djson', '**/*.djson'],
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          rcode: {
+            type: 'string',
+            enum: ['NOERROR', 'NXDOMAIN', 'SERVFAIL', 'REFUSED', 'FORMERR', 'NOTIMP'],
+            default: 'NOERROR',
+          },
+          ttl: {
+            type: 'integer',
+            minimum: 0,
+            default: 60,
+          },
+          answers: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['type', 'value'],
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: ['A', 'AAAA', 'CNAME', 'TXT'],
+                },
+                value: {
+                  type: 'string',
+                },
+                ttl: {
+                  type: 'integer',
+                  minimum: 0,
+                },
+              },
+            },
+            default: [],
+          },
+        },
+      },
+    },
+  ],
 })
 
 export { monaco }

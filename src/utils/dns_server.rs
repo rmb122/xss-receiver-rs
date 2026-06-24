@@ -87,6 +87,20 @@ async fn process_packet(
         }
     }
 
+    let mut response_packet = None;
+    if let Some(response) = response {
+        match build_message_response(&message, response) {
+            Ok(packet) => response_packet = Some(packet),
+            Err(error) => {
+                let build_error = format!("build dns response failed: {:?}", error);
+                error_log = Some(match error_log {
+                    Some(error_log) => format!("{}\n{}", error_log, build_error),
+                    None => build_error,
+                });
+            }
+        }
+    }
+
     if route.write_log {
         let mut conn = ctx.db_conn().await?;
         let _ = insert_dns_log(
@@ -105,9 +119,8 @@ async fn process_packet(
         .await?;
     }
 
-    if let Some(response) = response {
-        let response = build_message_response(&message, response)?;
-        socket.send_to(&response, client_addr).await?;
+    if let Some(response_packet) = response_packet {
+        socket.send_to(&response_packet, client_addr).await?;
     }
 
     Ok(())
