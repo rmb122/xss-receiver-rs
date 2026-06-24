@@ -24,10 +24,10 @@ self.MonacoEnvironment = {
   },
 }
 
-// 注册 .xjs 扩展名为 JavaScript 语言，使 Monaco 能自动识别 .xjs 文件
+// 注册 handler 脚本扩展名为 JavaScript 语言，使 Monaco 能自动识别脚本文件
 monaco.languages.register({
   id: 'javascript',
-  extensions: ['.xjs'],
+  extensions: ['.hjs', '.djs'],
 })
 
 export { monaco }

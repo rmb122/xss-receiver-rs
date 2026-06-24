@@ -39,7 +39,7 @@ CREATE TABLE system_log (
 );
 CREATE INDEX system_log_create_time_idx ON system_log USING btree (create_time);
 
-CREATE TABLE route (
+CREATE TABLE http_route (
 	id serial4 NOT NULL,
 	pattern_kind int2 NOT NULL,
 	pattern varchar(1024) NOT NULL,
@@ -51,6 +51,40 @@ CREATE TABLE route (
 	write_log bool NOT NULL,
 	"comment" text NOT NULL,
 	create_time timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT route_pk PRIMARY KEY (id)
+	CONSTRAINT http_route_pk PRIMARY KEY (id)
 );
-CREATE INDEX route_create_time_idx ON route (create_time);
+CREATE INDEX http_route_create_time_idx ON http_route (create_time);
+
+CREATE TABLE dns_route (
+	id serial4 NOT NULL,
+	pattern_kind int2 NOT NULL,
+	pattern varchar(1024) NOT NULL,
+	priority int4 NOT NULL,
+	"timeout" int4 NOT NULL,
+	"catalog" varchar(1024) NOT NULL,
+	handler_kind int2 NOT NULL,
+	"handler" varchar NOT NULL,
+	write_log bool NOT NULL,
+	"comment" text NOT NULL,
+	create_time timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT dns_route_pk PRIMARY KEY (id)
+);
+CREATE INDEX dns_route_create_time_idx ON dns_route (create_time);
+
+CREATE TABLE dns_log (
+	id serial4 NOT NULL,
+	client_ip varchar(45) NOT NULL,
+	client_port int4 NOT NULL,
+	location varchar NOT NULL,
+	query_name varchar NOT NULL,
+	query_type varchar(32) NOT NULL,
+	query_class varchar(32) NOT NULL,
+	extra_info bytea NOT NULL,
+	error_log text NULL,
+	create_time timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT dns_log_pk PRIMARY KEY (id)
+);
+CREATE INDEX dns_log_client_ip_idx ON dns_log USING btree (client_ip);
+CREATE INDEX dns_log_create_time_idx ON dns_log USING btree (create_time);
+CREATE INDEX dns_log_query_name_idx ON dns_log USING btree (query_name);
+CREATE INDEX dns_log_query_type_idx ON dns_log USING btree (query_type);

@@ -10,51 +10,65 @@ use crate::db;
 use crate::storage::{Storage, UserStorage};
 use crate::utils::parsed_request::ParsedRequest;
 
+use super::DispatchRoute;
 use super::script_engine::register_vars_to_context;
 
 #[async_trait]
-pub trait RouteHandler: Sync + Send {
+pub trait HttpRouteHandler: Sync + Send {
     async fn handle(
         &self,
         request: ParsedRequest,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)>;
 }
 
-pub struct Route {
+pub struct HttpRoute {
     pub(crate) pattern: String,
-    pub(crate) handler: Box<dyn RouteHandler>,
+    pub(crate) handler: Box<dyn HttpRouteHandler>,
     pub(crate) priority: i32,
     pub(crate) write_log: bool,
 }
 
-impl Route {
-    pub fn transform(value: db::route::model::Route, storage: &Storage) -> anyhow::Result<Self> {
+impl HttpRoute {
+    pub fn transform(
+        value: db::http_route::model::HttpRoute,
+        storage: &Storage,
+    ) -> anyhow::Result<Self> {
         // 在转换的时候验证是否是有效的路径, 避免路径穿越
         let filename = storage.user().absolute_path(&value.handler)?;
 
         let pattern = match value.pattern_kind {
-            db::route::model::PatternKind::PLAIN => {
+            db::http_route::model::PatternKind::PLAIN => {
                 format!("^{}$", regex::escape(&value.pattern))
             }
-            db::route::model::PatternKind::REGEX => value.pattern.clone(),
+            db::http_route::model::PatternKind::REGEX => value.pattern.clone(),
         };
 
-        let handler: Box<dyn RouteHandler> = match value.handler_kind {
-            db::route::model::HandlerKind::STATIC => Box::new(StaticHandler::new(filename)),
-            db::route::model::HandlerKind::SCRIPT => Box::new(ScriptHandler::new(
+        let handler: Box<dyn HttpRouteHandler> = match value.handler_kind {
+            db::http_route::model::HandlerKind::STATIC => Box::new(StaticHandler::new(filename)),
+            db::http_route::model::HandlerKind::SCRIPT => Box::new(ScriptHandler::new(
                 filename,
                 value.timeout,
                 storage.user().clone(),
             )),
-            db::route::model::HandlerKind::NONE => Box::new(NoneHandler::new()),
+            db::http_route::model::HandlerKind::NONE => Box::new(NoneHandler::new()),
         };
 
-        return Ok(Route {
+        return Ok(HttpRoute {
             pattern: pattern,
             handler: handler,
             priority: value.priority,
             write_log: value.write_log,
         });
+    }
+}
+
+impl DispatchRoute for HttpRoute {
+    fn pattern(&self) -> &str {
+        &self.pattern
+    }
+
+    fn priority(&self) -> i32 {
+        self.priority
     }
 }
 
@@ -71,7 +85,7 @@ impl StaticHandler {
 }
 
 #[async_trait]
-impl RouteHandler for StaticHandler {
+impl HttpRouteHandler for StaticHandler {
     async fn handle(
         &self,
         _: ParsedRequest,
@@ -124,7 +138,7 @@ impl From<JsError> for ScriptError {
 }
 
 #[async_trait]
-impl RouteHandler for ScriptHandler {
+impl HttpRouteHandler for ScriptHandler {
     async fn handle(
         &self,
         request: ParsedRequest,
@@ -188,7 +202,7 @@ impl NoneHandler {
 }
 
 #[async_trait]
-impl RouteHandler for NoneHandler {
+impl HttpRouteHandler for NoneHandler {
     async fn handle(
         &self,
         _: ParsedRequest,

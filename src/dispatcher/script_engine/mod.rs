@@ -1,14 +1,18 @@
 // 模块声明
+pub mod dns_request;
+pub mod dns_response;
 mod helpers;
 pub mod request;
 pub mod response;
 pub mod storage;
 pub mod utils;
 
+use crate::dispatcher::DnsRequest;
 use crate::storage::UserStorage;
 use crate::utils::parsed_request::ParsedRequest;
 use boa_engine::Context;
 use boa_gc::Gc;
+use dns_response::DnsResponseCell;
 use response::ResponseCell;
 
 /// 注册所有变量到 JS 上下文的主入口函数
@@ -28,6 +32,18 @@ pub fn register_vars_to_context(
 ) -> Gc<ResponseCell> {
     let response_cell = response::register_response_to_context(context);
     request::register_request_to_context(context, request);
+    storage::register_storage_to_context(context, user_storage);
+    utils::register_utils_to_context(context);
+    response_cell
+}
+
+pub fn register_dns_vars_to_context(
+    context: &mut Context,
+    request: &DnsRequest,
+    user_storage: UserStorage,
+) -> Gc<DnsResponseCell> {
+    let response_cell = dns_response::register_dns_response_to_context(context);
+    dns_request::register_dns_request_to_context(context, request);
     storage::register_storage_to_context(context, user_storage);
     utils::register_utils_to_context(context);
     response_cell

@@ -20,7 +20,7 @@ use crate::{
     utils::{diesel_bytea, ip2region::Locator, parsed_request::ParsedRequestBody},
 };
 use crate::{
-    dispatcher::Route,
+    dispatcher::HttpRoute,
     utils::parsed_request::{ParsedRequest, PersistedUploadFile},
 };
 
@@ -155,11 +155,11 @@ pub fn get_default_response() -> Response<Body> {
     Response::builder().status(404).body(Body::empty()).unwrap()
 }
 
-pub async fn process_route(
+pub async fn process_http_route(
     ctx: &Context,
     client_addr: &SocketAddr,
     request: Request<Body>,
-    route: &Route,
+    http_route: &HttpRoute,
 ) -> anyhow::Result<Response<Body>> {
     let request = ParsedRequest::new(
         client_addr.clone(),
@@ -169,11 +169,11 @@ pub async fn process_route(
     .await?;
 
     let mut new_http_log = None;
-    if route.write_log {
+    if http_route.write_log {
         new_http_log = Some(get_http_log_from_request(&request, &ctx.locator, &ctx.storage).await?);
     }
 
-    let result = route.handler.handle(request).await;
+    let result = http_route.handler.handle(request).await;
 
     let response = if let Some(mut new_http_log) = new_http_log {
         let response = match result {
@@ -215,17 +215,17 @@ pub async fn index(
         addr
     };
 
-    if let Some(route) = {
+    if let Some(http_route) = {
         // https://rustcc.cn/article?id=ab4703a7-2130-4164-be40-f7a5cd325b09
         // 这里放到花括号里面是为了避免 guard 不穿越 .await
-        ctx.dispatcher
+        ctx.http_dispatcher
             .read()
             .expect("lock poisoned")
-            .dispatch(&request)
+            .dispatch_key(request.uri().path())
     } {
         let url = request.uri().to_string();
 
-        match process_route(&ctx, &client_addr, request, &route).await {
+        match process_http_route(&ctx, &client_addr, request, &http_route).await {
             Ok(response) => return process_response_headers(&request_headers, response),
             Err(error) => {
                 tokio::spawn(handle_system_error(

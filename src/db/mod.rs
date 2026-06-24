@@ -5,8 +5,10 @@ use diesel_async::{
 
 pub mod schema;
 
+pub mod dns_log;
+pub mod dns_route;
 pub mod http_log;
-pub mod route;
+pub mod http_route;
 pub mod system_log;
 pub mod user;
 

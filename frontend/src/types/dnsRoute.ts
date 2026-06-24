@@ -1,7 +1,7 @@
 export type PatternKind = 'PLAIN' | 'REGEX'
 export type HandlerKind = 'STATIC' | 'SCRIPT' | 'NONE'
 
-export interface Route {
+export interface DnsRoute {
   id: number
   pattern_kind: PatternKind
   pattern: string
@@ -15,7 +15,7 @@ export interface Route {
   create_time: string
 }
 
-export interface CreateRouteRequest {
+export interface CreateDnsRouteRequest {
   pattern_kind: PatternKind
   pattern: string
   priority: number
@@ -27,7 +27,7 @@ export interface CreateRouteRequest {
   comment: string
 }
 
-export interface UpdateRouteRequest {
+export interface UpdateDnsRouteRequest {
   route_id: number
   pattern_kind: PatternKind
   pattern: string
@@ -40,6 +40,6 @@ export interface UpdateRouteRequest {
   comment: string
 }
 
-export interface DeleteRouteRequest {
+export interface DeleteDnsRouteRequest {
   route_id: number
 }

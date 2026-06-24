@@ -1,3 +1,7 @@
+use futures::{
+    FutureExt,
+    future::{BoxFuture, try_join_all},
+};
 use log::{error, info};
 use std::net::SocketAddr;
 
@@ -77,19 +81,41 @@ async fn main() {
         }
     );
 
-    let listener = tokio::net::TcpListener::bind(&config.http_server.listen)
+    let context = Context::new(&config, db_pool)
         .await
-        .expect("http server listen failed");
+        .expect("failed to initialize context");
 
-    axum::serve(
-        listener,
-        controllers::get_app_router(
-            Context::new(&config, db_pool)
+    let mut servers: Vec<BoxFuture<'static, anyhow::Result<()>>> = Vec::new();
+
+    if !config.http_server.listen.is_empty() {
+        let listener = tokio::net::TcpListener::bind(&config.http_server.listen)
+            .await
+            .expect("http server listen failed");
+        let http_context = context.clone();
+
+        servers.push(
+            async move {
+                axum::serve(
+                    listener,
+                    controllers::get_app_router(http_context)
+                        .into_make_service_with_connect_info::<SocketAddr>(),
+                )
                 .await
-                .expect("failed to initialize context"),
-        )
-        .into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .unwrap();
+                .map_err(anyhow::Error::from)
+            }
+            .boxed(),
+        );
+    }
+
+    if !config.dns_server.listen.is_empty() {
+        let dns_context = context.clone();
+        servers.push(async move { utils::dns_server::start(dns_context).await }.boxed());
+    }
+
+    if servers.is_empty() {
+        error!("http_server.listen and dns_server.listen are both empty");
+        std::process::exit(-1);
+    }
+
+    try_join_all(servers).await.unwrap();
 }

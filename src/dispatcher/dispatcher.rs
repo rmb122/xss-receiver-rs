@@ -1,43 +1,50 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{body::Body, http::Request};
 use regex::RegexSet;
 
-use super::route::Route;
+use super::{dns_route::DnsRoute, http_route::HttpRoute};
 
-pub struct Dispatcher {
+pub trait DispatchRoute: Sync + Send {
+    fn pattern(&self) -> &str;
+    fn priority(&self) -> i32;
+}
+
+pub type HttpDispatcher = RouteDispatcher<HttpRoute>;
+pub type DnsDispatcher = RouteDispatcher<DnsRoute>;
+
+pub struct RouteDispatcher<R> {
     // 这里使用 Arc, 因为在处理 route 的时候, 需要将 route clone 出来
     // 否则需要一直锁住 dispacher, 导致如果有一个 handler 速度比较慢的话, 无法更新该 dispacher (死锁)
-    routes: Vec<Arc<Route>>,
+    routes: Vec<Arc<R>>,
     route_regex_set: RegexSet,
 }
 
-impl Dispatcher {
-    pub fn new(routes: Vec<Route>) -> Result<Self> {
-        let route_regex_set = RegexSet::new(routes.iter().map(|x| x.pattern.clone()))?;
+impl<R: DispatchRoute> RouteDispatcher<R> {
+    pub fn new(routes: Vec<R>) -> Result<Self> {
+        let route_regex_set = RegexSet::new(routes.iter().map(|x| x.pattern()))?;
 
-        Ok(Dispatcher {
-            routes: routes.into_iter().map(|x| Arc::new(x)).collect(),
-            route_regex_set: route_regex_set,
+        Ok(RouteDispatcher {
+            routes: routes.into_iter().map(Arc::new).collect(),
+            route_regex_set,
         })
     }
 
-    pub fn dispatch(&self, request: &Request<Body>) -> Option<Arc<Route>> {
-        let path = request.uri().path();
-
+    pub fn dispatch_key(&self, key: &str) -> Option<Arc<R>> {
         if let Some(max_idx) =
             self.route_regex_set
-                .matches(path)
+                .matches(key)
                 .iter()
-                .fold(None, |max: Option<usize>, x: usize| match max {
-                    // 返回 priority 最大的 route
-                    None => Some(x),
-                    Some(max) => {
-                        if self.routes[max].priority < self.routes[x].priority {
-                            Some(x)
-                        } else {
-                            Some(max)
+                .fold(None, |max: Option<usize>, x: usize| {
+                    match max {
+                        // 返回 priority 最大的 route
+                        None => Some(x),
+                        Some(max) => {
+                            if self.routes[max].priority() < self.routes[x].priority() {
+                                Some(x)
+                            } else {
+                                Some(max)
+                            }
                         }
                     }
                 })

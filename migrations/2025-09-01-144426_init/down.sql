@@ -1,4 +1,6 @@
-DROP TABLE users;
-DROP TABLE http_log;
+DROP TABLE dns_log;
+DROP TABLE dns_route;
+DROP TABLE http_route;
 DROP TABLE system_log;
-DROP TABLE route;
+DROP TABLE http_log;
+DROP TABLE users;

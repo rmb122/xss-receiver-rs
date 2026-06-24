@@ -1,7 +1,9 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import HttpLogView from '@/views/HttpLogView.vue'
-import RouteView from '@/views/RouteView.vue'
+import HttpRouteView from '@/views/HttpRouteView.vue'
+import DnsLogView from '@/views/DnsLogView.vue'
+import DnsRouteView from '@/views/DnsRouteView.vue'
 import FileView from '@/views/FileView.vue'
 import SystemLogView from '@/views/SystemLogView.vue'
 import UserView from '@/views/UserView.vue'
@@ -20,9 +22,19 @@ const router = createRouter({
       component: HttpLogView,
     },
     {
-      path: '/routes',
-      name: 'routes',
-      component: RouteView,
+      path: '/http-routes',
+      name: 'httpRoutes',
+      component: HttpRouteView,
+    },
+    {
+      path: '/dns-log',
+      name: 'dnsLog',
+      component: DnsLogView,
+    },
+    {
+      path: '/dns-routes',
+      name: 'dnsRoutes',
+      component: DnsRouteView,
     },
     {
       path: '/files',

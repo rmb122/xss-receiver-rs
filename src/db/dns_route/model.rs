@@ -51,9 +51,9 @@ pub enum HandlerKind {
 }
 
 #[derive(Queryable, Selectable, Insertable, Serialize, Deserialize, utoipa::ToSchema)]
-#[diesel(table_name = crate::db::schema::route)]
+#[diesel(table_name = crate::db::schema::dns_route)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Route {
+pub struct DnsRoute {
     pub id: i32,
     pub pattern_kind: PatternKind,
     pub pattern: String,
@@ -68,9 +68,9 @@ pub struct Route {
 }
 
 #[derive(Insertable, Clone)]
-#[diesel(table_name = crate::db::schema::route)]
+#[diesel(table_name = crate::db::schema::dns_route)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct NewRoute {
+pub struct NewDnsRoute {
     pub pattern_kind: PatternKind,
     pub pattern: String,
     pub priority: i32,

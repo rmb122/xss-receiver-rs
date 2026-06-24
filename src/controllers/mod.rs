@@ -10,30 +10,33 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
-    db::route::helper::get_all_routes,
-    dispatcher::{Dispatcher, Route},
+    db::{dns_route::helper::get_all_dns_routes, http_route::helper::get_all_http_routes},
+    dispatcher::{DnsDispatcher, DnsRoute, HttpDispatcher, HttpRoute},
     startup_config::StartupConfig,
     storage::Storage,
     utils::{ip2region::Locator, jwt::JwtManager, random::get_random_bytes, response::Response},
 };
 
+mod dns_log;
+mod dns_route;
 mod file;
 mod frontend;
 mod http_log;
+mod http_route;
 mod index;
-mod route;
 mod system_log;
 mod user;
 
 #[derive(Clone)]
 pub struct Context {
-    config: Arc<StartupConfig>,
-    pool: bb8::Pool<AsyncPgConnection>,
+    pub(crate) config: Arc<StartupConfig>,
+    pub(crate) pool: bb8::Pool<AsyncPgConnection>,
     jwt_manager: Arc<JwtManager>,
-    locator: Arc<Locator>,
+    pub(crate) locator: Arc<Locator>,
 
-    dispatcher: Arc<RwLock<Dispatcher>>,
-    storage: Arc<Storage>,
+    pub(crate) http_dispatcher: Arc<RwLock<HttpDispatcher>>,
+    pub(crate) dns_dispatcher: Arc<RwLock<DnsDispatcher>>,
+    pub(crate) storage: Arc<Storage>,
 }
 
 impl Context {
@@ -77,11 +80,18 @@ impl Context {
             jwt_manager: Arc::new(jwt_manager),
             locator: Arc::new(locator),
 
-            dispatcher: Arc::new(RwLock::new(Dispatcher::new(
-                get_all_routes(&mut conn)
+            http_dispatcher: Arc::new(RwLock::new(HttpDispatcher::new(
+                get_all_http_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| Route::transform(x, &storage))
+                    .map(|x| HttpRoute::transform(x, &storage))
+                    .collect::<anyhow::Result<Vec<_>>>()?,
+            )?)),
+            dns_dispatcher: Arc::new(RwLock::new(DnsDispatcher::new(
+                get_all_dns_routes(&mut conn)
+                    .await?
+                    .into_iter()
+                    .map(|x| DnsRoute::transform(x, &storage))
                     .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
             storage: Arc::new(storage),
@@ -109,15 +119,23 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(user::delete_user))
         .routes(routes!(user::update_user));
 
-    let route_router = OpenApiRouter::new()
-        .routes(routes!(route::create_route))
-        .routes(routes!(route::get_routes))
-        .routes(routes!(route::delete_route))
-        .routes(routes!(route::update_route));
+    let http_route_router = OpenApiRouter::new()
+        .routes(routes!(http_route::create_http_route))
+        .routes(routes!(http_route::get_http_routes))
+        .routes(routes!(http_route::delete_http_route))
+        .routes(routes!(http_route::update_http_route));
 
     let http_log_router = OpenApiRouter::new()
         .routes(routes!(http_log::get_http_logs))
         .routes(routes!(http_log::get_http_log_raw_body_response));
+
+    let dns_route_router = OpenApiRouter::new()
+        .routes(routes!(dns_route::create_dns_route))
+        .routes(routes!(dns_route::get_dns_routes))
+        .routes(routes!(dns_route::delete_dns_route))
+        .routes(routes!(dns_route::update_dns_route));
+
+    let dns_log_router = OpenApiRouter::new().routes(routes!(dns_log::get_dns_logs));
 
     let system_log_router = OpenApiRouter::new().routes(routes!(system_log::get_system_logs));
 
@@ -136,8 +154,10 @@ pub fn get_app_router(context: Context) -> Router<()> {
 
     let (mut admin_api_router, mut openapi) = OpenApiRouter::new()
         .nest("/user", user_router)
-        .nest("/route", route_router)
+        .nest("/http_route", http_route_router)
         .nest("/http_log", http_log_router)
+        .nest("/dns_route", dns_route_router)
+        .nest("/dns_log", dns_log_router)
         .nest("/system_log", system_log_router)
         .nest("/file", file_router)
         .split_for_parts();

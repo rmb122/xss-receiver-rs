@@ -23,7 +23,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { monaco } from '@/monaco'
 import { typescript, type IDisposable } from 'monaco-editor'
-import { scriptEngineTypes } from '@/script-engine-types'
+import { dnsScriptEngineTypes, httpScriptEngineTypes } from '@/script-engine-types'
 import { SUPPORTED_ENCODINGS } from '@/utils/encoding'
 
 const props = withDefaults(
@@ -73,10 +73,15 @@ function updateExtraLib(filename: string) {
     extraLibDisposable.dispose()
     extraLibDisposable = null
   }
-  if (filename.endsWith('.xjs')) {
+  if (filename.endsWith('.hjs')) {
     extraLibDisposable = typescript.javascriptDefaults.addExtraLib(
-      scriptEngineTypes,
-      'ts:script-engine.d.ts',
+      httpScriptEngineTypes,
+      'ts:http-script-engine.d.ts',
+    )
+  } else if (filename.endsWith('.djs')) {
+    extraLibDisposable = typescript.javascriptDefaults.addExtraLib(
+      dnsScriptEngineTypes,
+      'ts:dns-script-engine.d.ts',
     )
   }
 }

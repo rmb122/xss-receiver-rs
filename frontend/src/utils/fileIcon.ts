@@ -34,7 +34,8 @@ const EXT_MAP: Record<string, FileIcon> = {
   mjs: { icon: 'mdi-language-javascript', color: 'amber-darken-2' },
   cjs: { icon: 'mdi-language-javascript', color: 'amber-darken-2' },
   jsx: { icon: 'mdi-language-javascript', color: 'amber-darken-2' },
-  xjs: { icon: 'mdi-language-javascript', color: 'deep-purple' }, // 项目自定义脚本
+  hjs: { icon: 'mdi-language-javascript', color: 'deep-purple' }, // HTTP handler 脚本
+  djs: { icon: 'mdi-language-javascript', color: 'cyan-darken-2' }, // DNS handler 脚本
   ts: { icon: 'mdi-language-typescript', color: 'blue' },
   tsx: { icon: 'mdi-language-typescript', color: 'blue' },
 

@@ -5,7 +5,7 @@
         <v-icon class="mr-2">mdi-routes</v-icon>
         HTTP 路由
         <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchRoutes">刷新</v-btn>
+        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchHttpRoutes">刷新</v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-format-list-group"
@@ -21,7 +21,7 @@
 
       <v-data-table
         :headers="computedHeaders"
-        :items="routes"
+        :items="httpRoutes"
         :group-by="groupByEnabled ? [{ key: 'catalog', order: 'asc' }] : undefined"
         :loading="loading"
         density="comfortable"
@@ -191,23 +191,28 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { getAllRoutes, createRoute, updateRoute, deleteRoute } from '@/api/route'
+import {
+  getAllHttpRoutes,
+  createHttpRoute,
+  updateHttpRoute,
+  deleteHttpRoute,
+} from '@/api/httpRoute'
 import { listAll, getFileBytes, FileTooLargeError, chunkedUpload } from '@/api/file'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import { formatFileSize, formatTime } from '@/utils/format'
 import { expandAllGroups } from '@/utils/table'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FileEditorDialog from '@/components/file/FileEditorDialog.vue'
-import type { Route, HandlerKind, PatternKind } from '@/types/route'
+import type { HttpRoute, HandlerKind, PatternKind } from '@/types/httpRoute'
 import type { DataTableHeader } from 'vuetify'
 import type { Group } from 'vuetify/lib/components/VDataTable/composables/group.mjs'
 
-const ROUTE_GROUP_BY_KEY = 'XSS_RECEIVER_ROUTE_GROUP_BY'
+const HTTP_ROUTE_GROUP_BY_KEY = 'XSS_RECEIVER_HTTP_ROUTE_GROUP_BY'
 
 const handlerKindOptions: HandlerKind[] = ['STATIC', 'SCRIPT', 'NONE']
 const patternKindOptions: PatternKind[] = ['PLAIN', 'REGEX']
 
-const routes = ref<Route[]>([])
+const httpRoutes = ref<HttpRoute[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
@@ -259,7 +264,7 @@ const computedHeaders = computed(() => {
 
 // 从已有路由数据中提取不重复的分类值作为下拉选项
 const catalogOptions = computed(() => {
-  const catalogs = routes.value.map((r) => r.catalog).filter((c) => c !== '')
+  const catalogs = httpRoutes.value.map((r) => r.catalog).filter((c) => c !== '')
   return [...new Set(catalogs)].sort()
 })
 
@@ -289,10 +294,10 @@ function resetForm() {
   }
 }
 
-async function fetchRoutes() {
+async function fetchHttpRoutes() {
   loading.value = true
   try {
-    routes.value = await getAllRoutes()
+    httpRoutes.value = await getAllHttpRoutes()
     nextTick(() => {
       expandAllGroups(groupHeaders)
     })
@@ -327,19 +332,19 @@ function openCreateDialogWithCatalog(catalog: string) {
   loadHandlerOptions()
 }
 
-function openEditDialog(route: Route) {
+function openEditDialog(httpRoute: HttpRoute) {
   isEditing.value = true
-  editingId.value = route.id
+  editingId.value = httpRoute.id
   form.value = {
-    pattern_kind: route.pattern_kind,
-    pattern: route.pattern,
-    priority: route.priority,
-    timeout: route.timeout,
-    catalog: route.catalog,
-    handler_kind: route.handler_kind,
-    handler: route.handler,
-    write_log: route.write_log,
-    comment: route.comment,
+    pattern_kind: httpRoute.pattern_kind,
+    pattern: httpRoute.pattern,
+    priority: httpRoute.priority,
+    timeout: httpRoute.timeout,
+    catalog: httpRoute.catalog,
+    handler_kind: httpRoute.handler_kind,
+    handler: httpRoute.handler,
+    write_log: httpRoute.write_log,
+    comment: httpRoute.comment,
   }
   dialogVisible.value = true
   loadHandlerOptions()
@@ -349,41 +354,41 @@ async function handleSave() {
   saving.value = true
   try {
     if (isEditing.value && editingId.value !== null) {
-      await updateRoute({ route_id: editingId.value, ...form.value })
+      await updateHttpRoute({ http_route_id: editingId.value, ...form.value })
       showSuccessToast('路由更新成功')
     } else {
-      await createRoute(form.value)
+      await createHttpRoute(form.value)
       showSuccessToast('路由创建成功')
     }
     dialogVisible.value = false
-    fetchRoutes()
+    fetchHttpRoutes()
   } finally {
     saving.value = false
   }
 }
 
-async function handleDelete(route: Route) {
+async function handleDelete(httpRoute: HttpRoute) {
   const confirmed = await confirmDialog.value!.open(
     '确认删除',
-    `确定要删除路由 "${route.pattern}" 吗？`,
+    `确定要删除路由 "${httpRoute.pattern}" 吗？`,
   )
   if (!confirmed) return
 
-  await deleteRoute({ route_id: route.id })
+  await deleteHttpRoute({ http_route_id: httpRoute.id })
   showSuccessToast('路由删除成功')
-  fetchRoutes()
+  fetchHttpRoutes()
 }
 
 // 打开 Handler 文件编辑器
-async function openHandlerEditor(route: Route) {
-  if (!route.handler) {
+async function openHandlerEditor(httpRoute: HttpRoute) {
+  if (!httpRoute.handler) {
     showErrorToast('handler 路径为空')
     return
   }
-  const filename = route.handler.split('/').pop() || route.handler
+  const filename = httpRoute.handler.split('/').pop() || httpRoute.handler
   let bytes: Uint8Array<ArrayBuffer>
   try {
-    bytes = await getFileBytes(route.handler)
+    bytes = await getFileBytes(httpRoute.handler)
   } catch (err) {
     if (err instanceof FileTooLargeError) {
       showErrorToast(`文件过大 (${formatFileSize(err.size)}), 无法在线编辑, 请下载后查看`)
@@ -395,7 +400,7 @@ async function openHandlerEditor(route: Route) {
   editingHandlerFile.value = {
     name: filename,
     bytes: bytes,
-    path: route.handler,
+    path: httpRoute.handler,
   }
   handlerEditorDialog.value = true
 }
@@ -428,7 +433,7 @@ async function handleSaveHandlerFileAndClose(bytes: Uint8Array<ArrayBuffer>) {
 // 切换分组显示
 function toggleGroupBy() {
   groupByEnabled.value = !groupByEnabled.value
-  localStorage.setItem(ROUTE_GROUP_BY_KEY, JSON.stringify(groupByEnabled.value))
+  localStorage.setItem(HTTP_ROUTE_GROUP_BY_KEY, JSON.stringify(groupByEnabled.value))
   nextTick(() => {
     expandAllGroups(groupHeaders)
   })
@@ -436,7 +441,7 @@ function toggleGroupBy() {
 
 // 加载分组显示设置
 function loadGroupBySetting() {
-  const saved = localStorage.getItem(ROUTE_GROUP_BY_KEY)
+  const saved = localStorage.getItem(HTTP_ROUTE_GROUP_BY_KEY)
   if (saved !== null) {
     groupByEnabled.value = JSON.parse(saved)
   }
@@ -444,7 +449,7 @@ function loadGroupBySetting() {
 
 onMounted(async () => {
   loadGroupBySetting()
-  await fetchRoutes()
+  await fetchHttpRoutes()
 })
 </script>
 

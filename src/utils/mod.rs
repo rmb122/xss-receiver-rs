@@ -1,4 +1,5 @@
 pub mod diesel_bytea;
+pub mod dns_server;
 pub mod ip2region;
 pub mod jwt;
 pub mod multimap;
