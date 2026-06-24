@@ -55,11 +55,11 @@ impl Default for ScriptCache {
 }
 
 fn default_script_cache_max_entries() -> u64 {
-    10000
+    1024
 }
 
 fn default_script_cache_max_entry_size() -> u64 {
-    1048576
+    65535
 }
 
 fn default_script_cache_max_ttl() -> u64 {
