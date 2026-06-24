@@ -270,7 +270,7 @@ const form = ref({
   timeout: 5000,
   catalog: '',
   handler_kind: 'STATIC' as HandlerKind,
-  handler: 'dns-response.djson',
+  handler: '',
   write_log: true,
   comment: '',
 })
@@ -283,7 +283,7 @@ function resetForm() {
     timeout: 5000,
     catalog: '',
     handler_kind: 'STATIC',
-    handler: 'dns-response.djson',
+    handler: '',
     write_log: true,
     comment: '',
   }
