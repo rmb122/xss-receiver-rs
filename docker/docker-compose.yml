@@ -15,10 +15,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  backend:
-    image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-backend:latest
+  server:
+    image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-rs:latest
     ports:
-      - 8002:8000
+      - 8000:8000
+      # - "x.x.x.x:53/udp"
     volumes:
       - ./config.toml:/app/config.toml:ro
       - ./app_data:/app/storage
