@@ -210,6 +210,10 @@ import { decodeBytes } from '@/utils/encoding'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
+import {
+  requestBrowserNotificationPermission,
+  sendBrowserNotification,
+} from '@/utils/browserNotification'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -305,7 +309,10 @@ async function fetchLogs(isAutoRefresh = false) {
         // 如果有新的日志 ID，发送通知
         // 页数相同, 且 id 更大
         if (lastMaxLog.value[0] == page.value && currentMaxId > lastMaxLog.value[1]) {
-          sendNotification()
+          sendBrowserNotification({
+            body: '收到新 HTTP 请求',
+            tag: 'http-log-notification',
+          })
         }
       }
 
@@ -483,33 +490,6 @@ async function openRawBody(log: HttpLog) {
   }
 }
 
-// 请求通知权限
-async function requestNotificationPermission() {
-  if (!('Notification' in window)) {
-    console.log('此浏览器不支持桌面通知')
-    return
-  }
-
-  if (Notification.permission === 'default') {
-    await Notification.requestPermission()
-  }
-}
-
-// 发送通知
-function sendNotification() {
-  if (!('Notification' in window)) {
-    return
-  }
-
-  if (Notification.permission === 'granted') {
-    new Notification('XSS Receiver', {
-      body: '收到新 HTTP 请求',
-      icon: '/favicon.ico',
-      tag: 'http-log-notification',
-    })
-  }
-}
-
 // 手动刷新
 function handleManualRefresh() {
   fetchLogs()
@@ -550,7 +530,7 @@ function toggleAutoRefresh() {
 // 组件挂载时，如果自动刷新是开启的，则启动定时器
 onMounted(async () => {
   // 请求通知权限
-  await requestNotificationPermission()
+  await requestBrowserNotificationPermission()
 
   if (autoRefresh.value) {
     startAutoRefresh()

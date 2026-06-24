@@ -95,6 +95,10 @@ import type { DnsLog } from '@/types/dnsLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
 import { formatTime } from '@/utils/format'
 import { showSuccessToast } from '@/utils/toast'
+import {
+  requestBrowserNotificationPermission,
+  sendBrowserNotification,
+} from '@/utils/browserNotification'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -132,7 +136,10 @@ async function fetchLogs(isAutoRefresh = false) {
         lastMaxLog.value[0] === page.value &&
         currentMaxId > lastMaxLog.value[1]
       ) {
-        sendNotification()
+        sendBrowserNotification({
+          body: '收到新的 DNS 查询',
+          tag: 'dns-log-notification',
+        })
       }
       lastMaxLog.value = [page.value, currentMaxId]
     }
@@ -155,10 +162,6 @@ function onOptionsUpdate(options: any) {
 function handleManualRefresh() {
   fetchLogs()
   showSuccessToast('已刷新')
-}
-
-function sendNotification() {
-  showSuccessToast('收到新的 DNS 查询')
 }
 
 function toggleAutoRefresh() {
@@ -184,7 +187,8 @@ function stopAutoRefresh() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await requestBrowserNotificationPermission()
   fetchLogs()
   if (autoRefresh.value) startAutoRefresh()
 })
