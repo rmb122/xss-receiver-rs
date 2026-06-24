@@ -1,4 +1,5 @@
 // 模块声明
+pub mod cache;
 pub mod dns_request;
 pub mod dns_response;
 mod helpers;
@@ -12,6 +13,7 @@ use crate::storage::UserStorage;
 use crate::utils::parsed_request::ParsedRequest;
 use boa_engine::Context;
 use boa_gc::Gc;
+use cache::ScriptCache;
 use dns_response::DnsResponseCell;
 use http_response::HttpResponseCell;
 
@@ -29,10 +31,12 @@ pub fn register_http_vars_to_context(
     context: &mut Context,
     request: &ParsedRequest,
     user_storage: UserStorage,
+    cache: ScriptCache,
 ) -> Gc<HttpResponseCell> {
     let response_cell = http_response::register_response_to_context(context);
     http_request::register_http_request_to_context(context, request);
     storage::register_storage_to_context(context, user_storage);
+    cache::register_cache_to_context(context, cache);
     utils::register_utils_to_context(context);
     response_cell
 }
@@ -41,10 +45,12 @@ pub fn register_dns_vars_to_context(
     context: &mut Context,
     request: &DnsRequest,
     user_storage: UserStorage,
+    cache: ScriptCache,
 ) -> Gc<DnsResponseCell> {
     let response_cell = dns_response::register_dns_response_to_context(context);
     dns_request::register_dns_request_to_context(context, request);
     storage::register_storage_to_context(context, user_storage);
+    cache::register_cache_to_context(context, cache);
     utils::register_utils_to_context(context);
     response_cell
 }

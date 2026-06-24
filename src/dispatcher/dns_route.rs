@@ -11,7 +11,7 @@ use crate::db;
 use crate::storage::{Storage, UserStorage};
 
 use super::DispatchRoute;
-use super::script_engine::register_dns_vars_to_context;
+use super::{ScriptCache, script_engine::register_dns_vars_to_context};
 
 #[derive(Clone, Debug)]
 pub struct DnsRequest {
@@ -126,6 +126,7 @@ impl DnsRoute {
     pub fn transform(
         value: db::dns_route::model::DnsRoute,
         storage: &Storage,
+        cache: ScriptCache,
     ) -> anyhow::Result<Self> {
         let pattern = match value.pattern_kind {
             db::dns_route::model::PatternKind::PLAIN => {
@@ -142,6 +143,7 @@ impl DnsRoute {
                 storage.user().absolute_path(&value.handler)?,
                 value.timeout,
                 storage.user().clone(),
+                cache,
             )),
             db::dns_route::model::HandlerKind::NONE => Box::new(NoneDnsHandler::new()),
         };
@@ -200,14 +202,21 @@ pub struct ScriptDnsHandler {
     filename: String,
     timeout: i32,
     user_storage: UserStorage,
+    cache: ScriptCache,
 }
 
 impl ScriptDnsHandler {
-    pub fn new<T: Into<String>>(filename: T, timeout: i32, user_storage: UserStorage) -> Self {
+    pub fn new<T: Into<String>>(
+        filename: T,
+        timeout: i32,
+        user_storage: UserStorage,
+        cache: ScriptCache,
+    ) -> Self {
         Self {
             filename: filename.into(),
             timeout,
             user_storage,
+            cache,
         }
     }
 }
@@ -238,12 +247,13 @@ impl DnsRouteHandler for ScriptDnsHandler {
         let script = tokio::fs::read_to_string(&self.filename).await?;
         let timeout = self.timeout;
         let user_storage = self.user_storage.clone();
+        let cache = self.cache.clone();
         let query_type = request.query_type;
         let script_request = request.clone();
 
         let (result, response) = task::spawn_blocking(move || {
             let mut context = Context::default();
-            let response = register_dns_vars_to_context(&mut context, &script_request, user_storage);
+            let response = register_dns_vars_to_context(&mut context, &script_request, user_storage, cache);
             let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> =
                 Source::from_bytes(script.as_bytes());
             let script = Script::parse(source, None, &mut context)?;

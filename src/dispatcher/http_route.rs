@@ -11,7 +11,7 @@ use crate::storage::{Storage, UserStorage};
 use crate::utils::parsed_request::ParsedRequest;
 
 use super::DispatchRoute;
-use super::script_engine::register_http_vars_to_context;
+use super::{ScriptCache, script_engine::register_http_vars_to_context};
 
 #[async_trait]
 pub trait HttpRouteHandler: Sync + Send {
@@ -32,6 +32,7 @@ impl HttpRoute {
     pub fn transform(
         value: db::http_route::model::HttpRoute,
         storage: &Storage,
+        cache: ScriptCache,
     ) -> anyhow::Result<Self> {
         // 在转换的时候验证是否是有效的路径, 避免路径穿越
         let filename = storage.user().absolute_path(&value.handler)?;
@@ -49,6 +50,7 @@ impl HttpRoute {
                 filename,
                 value.timeout,
                 storage.user().clone(),
+                cache,
             )),
             db::http_route::model::HandlerKind::NONE => Box::new(NoneHandler::new()),
         };
@@ -108,14 +110,21 @@ pub struct ScriptHandler {
     filename: String,
     timeout: i32,
     user_storage: UserStorage,
+    cache: ScriptCache,
 }
 
 impl ScriptHandler {
-    pub fn new<T: Into<String>>(filename: T, timeout: i32, user_storage: UserStorage) -> Self {
+    pub fn new<T: Into<String>>(
+        filename: T,
+        timeout: i32,
+        user_storage: UserStorage,
+        cache: ScriptCache,
+    ) -> Self {
         return Self {
             filename: filename.into(),
             timeout,
             user_storage,
+            cache,
         };
     }
 }
@@ -147,11 +156,12 @@ impl HttpRouteHandler for ScriptHandler {
         let script = tokio::fs::read_to_string(&self.filename).await?;
         let timeout = self.timeout.clone();
         let user_storage = self.user_storage.clone();
+        let cache = self.cache.clone();
 
         // 在新线程中运行 js
         let (result, response) = task::spawn_blocking(move || {
             let mut context = Context::default();
-            let response = register_http_vars_to_context(&mut context, &request, user_storage);
+            let response = register_http_vars_to_context(&mut context, &request, user_storage, cache);
             let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> = Source::from_bytes(script.as_bytes());
             let script = Script::parse(source, None, &mut context)?;
 

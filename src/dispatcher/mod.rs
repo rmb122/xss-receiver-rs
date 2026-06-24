@@ -8,3 +8,4 @@ pub use dns_route::{
     DnsAnswer, DnsAnswerKind, DnsRequest, DnsResponse, DnsRoute, normalize_dns_name,
 };
 pub use http_route::HttpRoute;
+pub use script_engine::cache::ScriptCache;

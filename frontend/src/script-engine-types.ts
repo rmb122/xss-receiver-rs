@@ -24,7 +24,17 @@ interface Storage {
   exists(path: string): boolean;
 }
 
+type CacheValue = string | boolean | number | Uint8Array;
+
+interface Cache {
+  set(key: string, value: CacheValue, ttl?: number): void;
+  get(key: string): CacheValue | undefined;
+  delete(key: string): boolean;
+  incr(key: string, delta?: number, ttl?: number): number;
+}
+
 declare const storage: Storage;
+declare const cache: Cache;
 
 declare function base64Encode(data: string | Uint8Array): string;
 declare function base64Decode(data: string): Uint8Array;

@@ -8,6 +8,8 @@ pub struct StartupConfig {
     pub ip2region: Ip2Region,
     pub http_server: HttpServer,
     pub dns_server: DnsServer,
+    #[serde(default)]
+    pub script_cache: ScriptCache,
 }
 
 #[derive(Clone, Deserialize)]
@@ -32,11 +34,58 @@ pub struct DnsServer {
     pub listen: String,
 }
 
+#[derive(Clone, Deserialize)]
+pub struct ScriptCache {
+    #[serde(default = "default_script_cache_max_entries")]
+    pub max_entries: u64,
+    #[serde(default = "default_script_cache_max_entry_size")]
+    pub max_entry_size: u64,
+    #[serde(default = "default_script_cache_max_ttl")]
+    pub max_ttl: u64,
+}
+
+impl Default for ScriptCache {
+    fn default() -> Self {
+        Self {
+            max_entries: default_script_cache_max_entries(),
+            max_entry_size: default_script_cache_max_entry_size(),
+            max_ttl: default_script_cache_max_ttl(),
+        }
+    }
+}
+
+fn default_script_cache_max_entries() -> u64 {
+    10000
+}
+
+fn default_script_cache_max_entry_size() -> u64 {
+    1048576
+}
+
+fn default_script_cache_max_ttl() -> u64 {
+    3600
+}
+
 pub fn parse(cfg: &str) -> anyhow::Result<StartupConfig> {
     let cfg: StartupConfig = toml::from_str(cfg)?;
     if cfg.storage_path.is_empty() {
         return Err(anyhow::anyhow!(
             "upload_storage_path in config is empty, you must specify a path"
+        ));
+    }
+    if cfg.script_cache.max_entries == 0 {
+        return Err(anyhow::anyhow!(
+            "script_cache.max_entries must be greater than 0"
+        ));
+    }
+    if cfg.script_cache.max_entry_size == 0 {
+        return Err(anyhow::anyhow!(
+            "script_cache.max_entry_size must be greater than 0"
+        ));
+    }
+    if cfg.script_cache.max_ttl == 0 {
+        return Err(anyhow::anyhow!(
+            "script_cache.max_ttl must be greater than 0"
         ));
     }
     return Ok(cfg);

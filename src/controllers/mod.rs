@@ -11,7 +11,7 @@ use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
     db::{dns_route::helper::get_all_dns_routes, http_route::helper::get_all_http_routes},
-    dispatcher::{DnsDispatcher, DnsRoute, HttpDispatcher, HttpRoute},
+    dispatcher::{DnsDispatcher, DnsRoute, HttpDispatcher, HttpRoute, ScriptCache},
     startup_config::StartupConfig,
     storage::Storage,
     utils::{ip2region::Locator, jwt::JwtManager, random::get_random_bytes, response::Response},
@@ -37,6 +37,7 @@ pub struct Context {
     pub(crate) http_dispatcher: Arc<RwLock<HttpDispatcher>>,
     pub(crate) dns_dispatcher: Arc<RwLock<DnsDispatcher>>,
     pub(crate) storage: Arc<Storage>,
+    pub(crate) script_cache: ScriptCache,
 }
 
 impl Context {
@@ -73,6 +74,7 @@ impl Context {
         let mut conn = pool.get().await?;
 
         let storage = Storage::new(&config.storage_path)?;
+        let script_cache = ScriptCache::new(&config.script_cache);
 
         Ok(Context {
             config: Arc::new(config.to_owned()),
@@ -84,17 +86,18 @@ impl Context {
                 get_all_http_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| HttpRoute::transform(x, &storage))
+                    .map(|x| HttpRoute::transform(x, &storage, script_cache.clone()))
                     .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
             dns_dispatcher: Arc::new(RwLock::new(DnsDispatcher::new(
                 get_all_dns_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| DnsRoute::transform(x, &storage))
+                    .map(|x| DnsRoute::transform(x, &storage, script_cache.clone()))
                     .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
             storage: Arc::new(storage),
+            script_cache,
         })
     }
 

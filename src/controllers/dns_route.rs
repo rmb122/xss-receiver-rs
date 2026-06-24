@@ -14,7 +14,7 @@ use crate::db::dns_route::{
     },
     model::{DnsRoute, HandlerKind, NewDnsRoute, PatternKind},
 };
-use crate::dispatcher::{self, DnsDispatcher};
+use crate::dispatcher::{self, DnsDispatcher, ScriptCache};
 use crate::storage::Storage;
 use crate::{
     Context,
@@ -69,6 +69,7 @@ pub struct ModifyRequest {
 pub async fn compile_dns_routes(
     conn: &mut AsyncPgConnection,
     storage: &Storage,
+    cache: ScriptCache,
     modify: ModifyRequest,
 ) -> anyhow::Result<DnsDispatcher> {
     let mut routes = match modify.kind {
@@ -106,7 +107,7 @@ pub async fn compile_dns_routes(
     DnsDispatcher::new(
         routes
             .into_iter()
-            .map(|x| dispatcher::DnsRoute::transform(x, storage))
+            .map(|x| dispatcher::DnsRoute::transform(x, storage, cache.clone()))
             .collect::<anyhow::Result<Vec<_>>>()?,
     )
     .map_err(|err| anyhow::anyhow!("compile new dns dispatcher failed: {:?}", err))
@@ -139,6 +140,7 @@ pub async fn create_dns_route(
     let new_dispatcher = compile_dns_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::NEW,
             route_id: 0,
@@ -162,6 +164,7 @@ pub async fn delete_dns_route(
     let new_dispatcher = compile_dns_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::DELETE,
             route_id: request.route_id,
@@ -212,6 +215,7 @@ pub async fn update_dns_route(
     let new_dispatcher = compile_dns_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::REPLACE,
             route_id: request.route_id,

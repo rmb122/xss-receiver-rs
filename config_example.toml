@@ -13,6 +13,11 @@ max_body_size = 3145728            # 3MB
 [dns_server]
 listen = ""
 
+[script_cache]
+max_entries = 1024
+max_entry_size = 65535
+max_ttl = 3600
+
 [ip2region]
 ipv4_db = "docker/ip2region_v4.xdb"
 ipv6_db = "docker/ip2region_v6.xdb"

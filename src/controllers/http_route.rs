@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::controllers::user::LoggedUser;
 use crate::db::http_route::helper::{find_http_route_by_id, get_all_http_routes_except};
 use crate::db::http_route::model::PatternKind;
-use crate::dispatcher::{HttpDispatcher, HttpRoute as DispatcherHttpRoute};
+use crate::dispatcher::{HttpDispatcher, HttpRoute as DispatcherHttpRoute, ScriptCache};
 use crate::storage::Storage;
 use crate::{
     Context,
@@ -73,6 +73,7 @@ pub struct ModifyRequest {
 pub async fn compile_http_routes(
     conn: &mut AsyncPgConnection,
     storage: &Storage,
+    cache: ScriptCache,
     modify: ModifyRequest,
 ) -> anyhow::Result<HttpDispatcher> {
     let mut http_routes = match modify.kind {
@@ -118,7 +119,7 @@ pub async fn compile_http_routes(
     return HttpDispatcher::new(
         http_routes
             .into_iter()
-            .map(|x| DispatcherHttpRoute::transform(x, storage))
+            .map(|x| DispatcherHttpRoute::transform(x, storage, cache.clone()))
             .collect::<anyhow::Result<Vec<_>>>()?,
     )
     .map_err(|err| return anyhow::anyhow!("compile new http dispatcher failed: {:?}", err));
@@ -156,6 +157,7 @@ pub async fn create_http_route(
     let new_dispatcher = compile_http_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::NEW,
             http_route_id: 0,
@@ -184,6 +186,7 @@ pub async fn delete_http_route(
     let new_dispatcher = compile_http_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::DELETE,
             http_route_id: request.http_route_id,
@@ -240,6 +243,7 @@ pub async fn update_http_route(
     let new_dispatcher = compile_http_routes(
         &mut conn,
         &ctx.storage,
+        ctx.script_cache.clone(),
         ModifyRequest {
             kind: ModifyKind::REPLACE,
             http_route_id: request.http_route_id,
