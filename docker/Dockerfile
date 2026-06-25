@@ -13,6 +13,10 @@ RUN pnpm install --frozen-lockfile
 # Copy frontend source and build
 COPY frontend/ ./
 
+# Raise V8 heap limit to avoid OOM (SIGABRT / exit 134) when type-check and
+# vite build run in parallel for the monaco-editor / vuetify heavy bundle.
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 RUN pnpm build
 
 # ---- Stage 2: Rust Builder ----

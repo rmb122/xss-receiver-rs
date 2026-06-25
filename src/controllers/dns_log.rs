@@ -33,6 +33,7 @@ fn default_page_size() -> i64 {
     20
 }
 
+/// 获取 DNS 日志列表
 #[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedDnsLogResponse>)))]
 pub async fn get_dns_logs(
     State(ctx): State<Context>,

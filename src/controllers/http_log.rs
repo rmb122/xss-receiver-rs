@@ -43,7 +43,7 @@ fn default_page_size() -> i64 {
     20
 }
 
-// 分页查询 HTTP 日志
+/// 获取 HTTP 日志列表
 #[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedHttpLogResponse>)))]
 pub async fn get_http_logs(
     State(ctx): State<Context>,
@@ -71,6 +71,7 @@ pub async fn get_http_logs(
     )
 }
 
+/// 获取 HTTP 日志的原始请求体
 #[utoipa::path(
     get,
     path = "/{id}/raw_body",

@@ -281,6 +281,7 @@ pub async fn stat(
 
 // ==================== 日志文件 ====================
 
+/// 下载日志文件
 #[utoipa::path(
     get,
     path = "/log/{file}",

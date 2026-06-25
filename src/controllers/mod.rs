@@ -178,7 +178,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
         admin_api_router = admin_api_router.merge(
             SwaggerUi::new("/swagger-ui")
                 .url(OPEN_API_URL, openapi)
-                .config(Config::from(format!("{}{}", prefix, OPEN_API_URL))),
+                .config(Config::from(format!("{}/api{}", prefix, OPEN_API_URL))),
         );
     }
 

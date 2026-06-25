@@ -130,7 +130,7 @@ pub fn install_http_dispatcher(holder: &Arc<RwLock<HttpDispatcher>>, new: HttpDi
     *guard = new;
 }
 
-// 创建路由
+/// 创建 HTTP 路由
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<HttpRoute>)))]
 pub async fn create_http_route(
     State(ctx): State<Context>,
@@ -171,7 +171,7 @@ pub async fn create_http_route(
     Ok(Response::<HttpRoute>::ok().payload(http_route))
 }
 
-// 删除路由
+/// 删除 HTTP 路由
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_http_route(
     State(ctx): State<Context>,
@@ -204,7 +204,7 @@ pub async fn delete_http_route(
     }
 }
 
-// 查询所有 HTTP 路由
+/// 获取 HTTP 路由列表
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<HttpRoute>>)))]
 pub async fn get_http_routes(
     State(ctx): State<Context>,
@@ -216,7 +216,7 @@ pub async fn get_http_routes(
     Ok(Response::<Vec<HttpRoute>>::ok().payload(http_routes))
 }
 
-// 更新 HTTP 路由
+/// 更新 HTTP 路由
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<HttpRoute>)))]
 pub async fn update_http_route(
     State(ctx): State<Context>,

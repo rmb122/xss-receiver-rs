@@ -118,6 +118,7 @@ pub fn install_dns_dispatcher(holder: &Arc<RwLock<DnsDispatcher>>, new: DnsDispa
     *guard = new;
 }
 
+/// 创建 DNS 路由
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<DnsRoute>)))]
 pub async fn create_dns_route(
     State(ctx): State<Context>,
@@ -154,6 +155,7 @@ pub async fn create_dns_route(
     Ok(Response::<DnsRoute>::ok().payload(route))
 }
 
+/// 删除 DNS 路由
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_dns_route(
     State(ctx): State<Context>,
@@ -182,6 +184,7 @@ pub async fn delete_dns_route(
     }
 }
 
+/// 获取 DNS 路由列表
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<DnsRoute>>)))]
 pub async fn get_dns_routes(
     State(ctx): State<Context>,
@@ -193,6 +196,7 @@ pub async fn get_dns_routes(
     Ok(Response::<Vec<DnsRoute>>::ok().payload(routes))
 }
 
+/// 更新 DNS 路由
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<DnsRoute>)))]
 pub async fn update_dns_route(
     State(ctx): State<Context>,

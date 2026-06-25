@@ -35,7 +35,7 @@ fn default_page_size() -> i64 {
     20
 }
 
-// 分页查询系统日志
+/// 获取系统日志列表
 #[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedSystemLogResponse>)))]
 pub async fn get_system_logs(
     State(ctx): State<Context>,

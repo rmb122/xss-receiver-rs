@@ -36,6 +36,7 @@ pub struct LoginRequest {
     password: String,
 }
 
+/// 用户登录
 #[utoipa::path(post, path = "/login", responses((status = OK, body = Response<bool>)))]
 pub async fn login(
     State(ctx): State<Context>,
@@ -92,6 +93,7 @@ pub async fn login(
     return Err(anyhow::anyhow!("username or password error").into());
 }
 
+/// 获取当前登录用户
 #[utoipa::path(get, path = "/current", responses((status = OK, body = Response<LoggedUser>)))]
 pub async fn current(Claims(user): Claims<LoggedUser>) -> Response<LoggedUser> {
     Response::ok().payload(user)
@@ -144,7 +146,7 @@ pub(crate) fn check_admin(user: &LoggedUser) -> Result<(), AppError> {
     Ok(())
 }
 
-// 创建用户 (仅管理员)
+/// 创建用户
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<UserResponse>)))]
 pub async fn create_user(
     State(ctx): State<Context>,
@@ -159,7 +161,7 @@ pub async fn create_user(
     Ok(Response::<UserResponse>::ok().payload(new_user.into()))
 }
 
-// 删除用户 (仅管理员)
+/// 删除用户
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_user(
     State(ctx): State<Context>,
@@ -178,7 +180,7 @@ pub async fn delete_user(
     }
 }
 
-// 查询所有用户 (仅管理员)
+/// 获取用户列表
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<UserResponse>>)))]
 pub async fn get_users(
     State(ctx): State<Context>,
@@ -193,7 +195,7 @@ pub async fn get_users(
     Ok(Response::<Vec<UserResponse>>::ok().payload(user_responses))
 }
 
-// 更新用户, 管理员可以修改任意用户, 其他人只能修改自己的
+/// 更新用户
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<UserResponse>)))]
 pub async fn update_user(
     State(ctx): State<Context>,
