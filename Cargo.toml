@@ -43,8 +43,9 @@ axum-extra = { version = "0.12.5", features = ["cookie"] }
 boa_engine = { version = "0.21.0", features = ["annex-b"] }
 boa_gc = "0.21.0"
 
-diesel = { version = "2.2.10", features = ["serde_json", "chrono"] }
-diesel-async = { version = "0.5.2", features = ["postgres", "bb8"] }
+diesel = { version = "2.3", features = ["serde_json", "chrono"] }
+diesel-async = { version = "0.7", features = ["postgres", "bb8", "migrations"] }
+diesel_migrations = "2.3"
 diesel-enum = "0.2.1"
 
 utoipa = { version = "5.4.0", features = ["axum_extras", "chrono"] }

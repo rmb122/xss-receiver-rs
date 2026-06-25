@@ -1,7 +1,8 @@
 use diesel_async::{
-    AsyncPgConnection,
+    AsyncMigrationHarness, AsyncPgConnection,
     pooled_connection::{AsyncDieselConnectionManager, bb8},
 };
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 pub mod schema;
 
@@ -27,4 +28,15 @@ impl EnumNotFoundError {
 pub async fn establish_db_connection(db_url: &str) -> anyhow::Result<bb8::Pool<AsyncPgConnection>> {
     let config = AsyncDieselConnectionManager::<diesel_async::AsyncPgConnection>::new(db_url);
     Ok(bb8::Pool::builder().build(config).await?)
+}
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
+pub async fn run_migrations(pool: &bb8::Pool<AsyncPgConnection>) -> anyhow::Result<()> {
+    let conn = pool.get_owned().await?;
+    let mut harness = AsyncMigrationHarness::new(conn);
+    harness
+        .run_pending_migrations(MIGRATIONS)
+        .map_err(|e| anyhow::anyhow!("run migrations failed: {e}"))?;
+    Ok(())
 }

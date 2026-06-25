@@ -57,6 +57,11 @@ async fn main() {
         }
     };
 
+    if let Err(err) = db::run_migrations(&db_pool).await {
+        error!("run database migrations failed: {:?}", err);
+        std::process::exit(-1);
+    }
+
     if let Some(create_result) = create_init_admin_user(&db_pool)
         .await
         .expect("create init admin user failed")

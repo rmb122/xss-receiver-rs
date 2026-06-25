@@ -182,9 +182,17 @@ pub fn get_app_router(context: Context) -> Router<()> {
         );
     }
 
+    // 访问不带尾部斜杠的前缀时, 跳转到带斜杠的版本 (如 /test -> /test/)
+    let redirect_location = format!("{}/", prefix);
+
     // add frontend static file routes
     let admin_router = Router::new()
-        .route("/", axum::routing::get(frontend::index))
+        .route(
+            "/",
+            axum::routing::get(
+                move || async move { axum::response::Redirect::to(&redirect_location) },
+            ),
+        )
         .route("/{*path}", axum::routing::get(frontend::serve))
         .nest("/api", admin_api_router);
 

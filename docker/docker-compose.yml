@@ -7,7 +7,6 @@ services:
       POSTGRES_DB: postgres
     volumes:
       - ./db_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -17,6 +16,9 @@ services:
 
   server:
     image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-rs:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     ports:
       - 8000:8000
       # - "x.x.x.x:53/udp"

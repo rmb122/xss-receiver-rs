@@ -48,9 +48,12 @@ where
             }
         };
 
-        if token.trim().starts_with(AUTHORIZATION_PREFIX) {
-            token = token[AUTHORIZATION_PREFIX.len()..].trim().to_owned()
-        }
+        let trimmed = token.trim();
+        token = trimmed
+            .strip_prefix(AUTHORIZATION_PREFIX)
+            .unwrap_or(trimmed)
+            .trim()
+            .to_owned();
 
         let decoder = Arc::<JwtManager>::from_ref(state);
         let token_data: TokenData<ExpirablePayload<T>> =

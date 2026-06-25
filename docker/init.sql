@@ -1,1 +1,0 @@
-../migrations/2025-09-01-144426_init/up.sql

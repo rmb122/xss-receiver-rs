@@ -29,7 +29,6 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
 Deploying with Docker Compose is recommended. The related files live in the `docker/` directory.
 
 1. Prepare the config file `docker/config.toml` and replace the placeholders with real values:
-
    - `jwt_secret`: the JWT signing key. Leave empty to generate a random one on each start (which invalidates already-issued tokens).
    - `admin_prefix`: the access prefix for the admin panel. It **must not be the root path `/`**; pick something hard to guess, e.g. `/a_secret_admin_path/`.
 
@@ -90,11 +89,11 @@ xss-receiver-rs <config_file>
 
 A route's handler points to a file in storage. The platform defines a set of extensions for different purposes, and the admin panel editor uses them to provide syntax highlighting, type hints, and schema validation:
 
-| Extension | Purpose | Editor support |
-| --- | --- | --- |
-| `.hjs` | HTTP `SCRIPT` handler script (JavaScript) | JS highlighting + HTTP script-engine type hints (`request` / `response`, etc.) |
-| `.djs` | DNS `SCRIPT` handler script (JavaScript) | JS highlighting + DNS script-engine type hints (`request` / `response`) |
-| `.djson` | static answer for a DNS `STATIC` handler (JSON) | JSON highlighting + DNS answer schema validation |
+| Extension | Purpose                                         | Editor support                                                                 |
+| --------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `.hjs`    | HTTP `SCRIPT` handler script (JavaScript)       | JS highlighting + HTTP script-engine type hints (`request` / `response`, etc.) |
+| `.djs`    | DNS `SCRIPT` handler script (JavaScript)        | JS highlighting + DNS script-engine type hints (`request` / `response`)        |
+| `.djson`  | static answer for a DNS `STATIC` handler (JSON) | JSON highlighting + DNS answer schema validation                               |
 
 A `.djson` static answer file has the following structure:
 
@@ -102,9 +101,7 @@ A `.djson` static answer file has the following structure:
 {
   "rcode": "NOERROR",
   "ttl": 60,
-  "answers": [
-    { "type": "A", "value": "1.2.3.4", "ttl": 60 }
-  ]
+  "answers": [{ "type": "A", "value": "1.2.3.4", "ttl": 60 }]
 }
 ```
 
@@ -120,42 +117,42 @@ A `.djson` static answer file has the following structure:
 
 ### `request` (HTTP)
 
-| Property / Method | Description |
-| --- | --- |
-| `request.method` | request method |
-| `request.path` | request path |
-| `request.clientAddr` | client address |
-| `request.body` | raw request body (`Uint8Array`) |
-| `request.headers` | request headers, supports `headers.get(key)` |
-| `request.query` | query parameters, supports `query.get(key)` |
-| `request.json` | parsed JSON body |
-| `request.forms` | form fields, supports `forms.get(key)` |
-| `request.files` | uploaded files; `files.get(name)` returns `{ filename, content }` |
+| Property / Method    | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
+| `request.method`     | request method                                                    |
+| `request.path`       | request path                                                      |
+| `request.clientAddr` | client address                                                    |
+| `request.body`       | raw request body (`Uint8Array`)                                   |
+| `request.headers`    | request headers, supports `headers.get(key)`                      |
+| `request.query`      | query parameters, supports `query.get(key)`                       |
+| `request.json`       | parsed JSON body                                                  |
+| `request.forms`      | form fields, supports `forms.get(key)`                            |
+| `request.files`      | uploaded files; `files.get(name)` returns `{ filename, content }` |
 
 ### `response` (HTTP)
 
-| Method | Description |
-| --- | --- |
-| `response.send(data)` | write the response body (string or `Uint8Array`); mutually exclusive with `sendFile` |
-| `response.sendFile(path)` | use a file from storage as the response body; callable only once |
-| `response.sendStatus(code)` | set the status code |
-| `response.sendHeader(key, value)` | set a response header; `value` may be a string or array of strings |
+| Method                            | Description                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------ |
+| `response.send(data)`             | write the response body (string or `Uint8Array`); mutually exclusive with `sendFile` |
+| `response.sendFile(path)`         | use a file from storage as the response body; callable only once                     |
+| `response.sendStatus(code)`       | set the status code                                                                  |
+| `response.sendHeader(key, value)` | set a response header; `value` may be a string or array of strings                   |
 
 ### `request` (DNS)
 
-| Property | Description |
-| --- | --- |
-| `request.name` | queried domain name |
-| `request.type` | query type (e.g. `A` / `AAAA`) |
-| `request.class` | query class (e.g. `IN`) |
-| `request.clientAddr` | client address |
+| Property             | Description                    |
+| -------------------- | ------------------------------ |
+| `request.name`       | queried domain name            |
+| `request.type`       | query type (e.g. `A` / `AAAA`) |
+| `request.class`      | query class (e.g. `IN`)        |
+| `request.clientAddr` | client address                 |
 
 ### `response` (DNS)
 
-| Method | Description |
-| --- | --- |
-| `response.answer(type, value, ttl?)` | append an answer record; `type` supports `A` / `AAAA` / `CNAME` / `TXT` |
-| `response.rcode(code)` | set the response code, e.g. `NOERROR` / `NXDOMAIN` / `SERVFAIL` / `REFUSED` |
+| Method                               | Description                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| `response.answer(type, value, ttl?)` | append an answer record; `type` supports `A` / `AAAA` / `CNAME` / `TXT`     |
+| `response.rcode(code)`               | set the response code, e.g. `NOERROR` / `NXDOMAIN` / `SERVFAIL` / `REFUSED` |
 
 ### `storage` (shared)
 

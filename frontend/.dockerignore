@@ -1,9 +1,0 @@
-node_modules
-dist
-.git
-.gitignore
-.vscode
-.roo
-*.md
-.env.development
-.env.local
