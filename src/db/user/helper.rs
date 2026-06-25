@@ -33,6 +33,10 @@ pub async fn create_init_admin_user(
             .returning(users::id)
             .get_result(&mut conn)
             .await?;
+        // admin 是手动指定 id 插入的, 不会推进序列, 这里同步序列避免后续自增插入主键冲突
+        diesel::sql_query("SELECT setval('users_id_seq', (SELECT MAX(id) FROM users))")
+            .execute(&mut conn)
+            .await?;
         return Ok(Some((username, password)));
     } else {
         return Ok(None);
