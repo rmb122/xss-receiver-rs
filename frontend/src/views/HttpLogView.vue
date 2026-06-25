@@ -68,7 +68,7 @@
                       parsed_body_type: item.parsed_body_type,
                       create_time: item.create_time,
                     }"
-                    max-height="200px"
+                    max-height="260px"
                   />
                 </div>
 

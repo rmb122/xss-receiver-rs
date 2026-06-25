@@ -128,6 +128,7 @@
             variant="outlined"
             density="compact"
             class="mb-2"
+            autocomplete="off"
           />
           <v-text-field
             v-model.number="form.priority"
@@ -155,6 +156,7 @@
             variant="outlined"
             density="compact"
             class="mb-2"
+            autocomplete="off"
           />
           <v-switch
             v-model="form.write_log"

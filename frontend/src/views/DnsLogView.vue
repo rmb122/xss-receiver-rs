@@ -59,7 +59,7 @@
                       query_class: item.query_class,
                       create_time: item.create_time,
                     }"
-                    max-height="240px"
+                    max-height="260px"
                   />
                 </div>
 
