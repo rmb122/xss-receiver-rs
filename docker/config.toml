@@ -1,0 +1,23 @@
+db_url = "postgres://postgres:postgres@db/postgres"
+storage_path = "/app/storage/"
+
+[http_server]
+listen = "0.0.0.0:8000"
+openapi = false
+jwt_secret = "${REPALCE_ME}"       # empty means random value
+jwt_expire_time = 259200           # 3 days
+real_addr_header = ""
+admin_prefix = "${REPALCE_ME}"
+max_body_size = 3145728            # 3MB
+
+[dns_server]
+listen = "0.0.0.0:53"
+
+[script_cache]
+max_entries = 1024
+max_entry_size = 65535
+max_ttl = 3600
+
+[ip2region]
+ipv4_db = "/app/data/ip2region_v4.xdb"
+ipv6_db = "/app/data/ip2region_v6.xdb"

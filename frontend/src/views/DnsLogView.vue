@@ -103,11 +103,34 @@ import {
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
   { title: 'ID', key: 'id', width: '70px', align: 'center', sortable: false },
-  { title: '时间', key: 'create_time', width: '200px', align: 'center', sortable: false },
-  { title: 'IP', key: 'client_ip', width: '180px', align: 'center', sortable: false },
-  { title: '位置', key: 'location', width: '200px', align: 'center', sortable: false },
+  {
+    title: '时间',
+    key: 'create_time',
+    width: '200px',
+    nowrap: true,
+    align: 'center',
+    sortable: false,
+  },
+  {
+    title: 'IP',
+    key: 'client_ip',
+    width: '180px',
+    maxWidth: '180px',
+    nowrap: true,
+    align: 'center',
+    sortable: false,
+  },
+  {
+    title: '位置',
+    key: 'location',
+    width: '200px',
+    maxWidth: '200px',
+    nowrap: true,
+    align: 'center',
+    sortable: false,
+  },
+  { title: '类型', key: 'query_type', width: '120px', align: 'center', sortable: false },
   { title: '域名', key: 'query_name', sortable: false },
-  { title: '类型', key: 'query_type', width: '100px', align: 'center', sortable: false },
 ]
 
 const logs = ref<DnsLog[]>([])
