@@ -1,7 +1,7 @@
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
-use crate::controllers::user::LoggedUser;
+use crate::controllers::user::{LoggedUser, check_admin};
 use crate::{
     Context,
     controllers::AppError,
@@ -39,9 +39,11 @@ fn default_page_size() -> i64 {
 #[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedSystemLogResponse>)))]
 pub async fn get_system_logs(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    Claims(user): Claims<LoggedUser>,
     Query(request): Query<PaginatedRequest>,
 ) -> Result<Response<PaginatedSystemLogResponse>, AppError> {
+    check_admin(&user)?;
+
     // 验证分页参数
     if request.page < 1 {
         return Err(anyhow::anyhow!("page must be greater than 0").into());

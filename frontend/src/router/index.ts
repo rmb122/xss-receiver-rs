@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import LoginView from '@/views/LoginView.vue'
 import HttpLogView from '@/views/HttpLogView.vue'
 import HttpRouteView from '@/views/HttpRouteView.vue'
@@ -45,6 +46,7 @@ const router = createRouter({
       path: '/system-log',
       name: 'systemLog',
       component: SystemLogView,
+      meta: { requiresAdmin: true },
     },
     {
       path: '/users',
@@ -52,6 +54,16 @@ const router = createRouter({
       component: UserView,
     },
   ],
+})
+
+router.beforeEach(async (to) => {
+  if (to.meta.requiresAdmin) {
+    const userStore = useUserStore()
+    await userStore.getInitialLoadPromise()
+    if (!userStore.isAdmin) {
+      return { path: '/' }
+    }
+  }
 })
 
 export default router

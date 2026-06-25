@@ -137,7 +137,7 @@ pub struct UpdateUserRequest {
 }
 
 // 管理员权限检查
-fn check_admin(user: &LoggedUser) -> Result<(), AppError> {
+pub(crate) fn check_admin(user: &LoggedUser) -> Result<(), AppError> {
     if user.id != ADMIN_ID {
         return Err(anyhow::anyhow!("permission denied: admin only").into());
     }
