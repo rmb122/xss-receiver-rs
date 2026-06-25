@@ -26,28 +26,32 @@
 
 ## 快速开始（Docker Compose）
 
-推荐使用 Docker Compose 部署，相关文件位于 `docker/` 目录。
+推荐使用 Docker Compose 部署，相关文件位于 `docker/` 目录。项目通过 GitHub Actions 自动构建镜像并推送到 GitHub Container Registry（GHCR），`docker-compose.yml` 已默认使用预构建镜像 `ghcr.io/rmb122/xss-receiver-rs:latest`，**无需在本地从源码构建**。
 
-1. 准备配置文件 `docker/config.toml`，将其中的占位符替换为真实值：
+1. 获取部署文件：克隆仓库，或单独下载 `docker/` 目录下的 `docker-compose.yml` 与 `config.toml`。
+
+2. 准备配置文件 `docker/config.toml`，将其中的占位符替换为真实值：
    - `jwt_secret`：JWT 签名密钥，留空则每次启动随机生成（会导致已签发 token 失效）。
    - `admin_prefix`：管理后台访问前缀，**不能为根路径 `/`**，建议设置为一个不易猜测的值，例如 `/a_secret_admin_path/`。
 
-2. 启动服务：
+3. 拉取镜像并启动服务：
 
 ```bash
 cd docker
 docker compose up -d
 ```
 
-3. 查看日志获取初始管理员账号密码（首次启动时自动创建）：
+4. 查看日志获取初始管理员账号密码（首次启动时自动创建）：
 
 ```bash
 docker compose logs server | grep "admin user created"
 ```
 
-4. 通过 `http://<your-host>:8000/<admin_prefix>/` 访问管理后台并登录。
+5. 通过 `http://<your-host>:8000/<admin_prefix>/` 访问管理后台并登录。
 
 > 如需启用 DNS 服务，请在 `docker/config.toml` 中设置 `dns_server.listen`（如 `0.0.0.0:53`），并在 `docker-compose.yml` 中放开对应的 UDP 端口映射。
+
+> 若希望本地从源码构建镜像而非拉取，可执行 `docker compose build`（或 `docker compose up -d --build`），构建逻辑见 `docker/Dockerfile`。
 
 ## 配置说明
 

@@ -26,28 +26,32 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
 
 ## Quick Start (Docker Compose)
 
-Deploying with Docker Compose is recommended. The related files live in the `docker/` directory.
+Deploying with Docker Compose is recommended. The related files live in the `docker/` directory. Images are automatically built by GitHub Actions and pushed to the GitHub Container Registry (GHCR). `docker-compose.yml` already uses the prebuilt image `ghcr.io/rmb122/xss-receiver-rs:latest` by default, so **there is no need to build from source locally**.
 
-1. Prepare the config file `docker/config.toml` and replace the placeholders with real values:
+1. Get the deployment files: clone the repository, or download just `docker-compose.yml` and `config.toml` from the `docker/` directory.
+
+2. Prepare the config file `docker/config.toml` and replace the placeholders with real values:
    - `jwt_secret`: the JWT signing key. Leave empty to generate a random one on each start (which invalidates already-issued tokens).
    - `admin_prefix`: the access prefix for the admin panel. It **must not be the root path `/`**; pick something hard to guess, e.g. `/a_secret_admin_path/`.
 
-2. Start the services:
+3. Pull the image and start the services:
 
 ```bash
 cd docker
 docker compose up -d
 ```
 
-3. Read the logs to get the initial admin credentials (created automatically on first start):
+4. Read the logs to get the initial admin credentials (created automatically on first start):
 
 ```bash
 docker compose logs server | grep "admin user created"
 ```
 
-4. Open `http://<your-host>:8000/<admin_prefix>/` to access the admin panel and log in.
+5. Open `http://<your-host>:8000/<admin_prefix>/` to access the admin panel and log in.
 
 > To enable the DNS server, set `dns_server.listen` (e.g. `0.0.0.0:53`) in `docker/config.toml` and expose the corresponding UDP port in `docker-compose.yml`.
+
+> If you prefer to build the image from source instead of pulling, run `docker compose build` (or `docker compose up -d --build`); the build logic lives in `docker/Dockerfile`.
 
 ## Configuration
 

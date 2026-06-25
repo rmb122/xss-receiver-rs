@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   server:
-    image: ccr.ccs.tencentyun.com/rmb122/xss-receiver-rs:latest
+    image: ghcr.io/rmb122/xss-receiver-rs:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile

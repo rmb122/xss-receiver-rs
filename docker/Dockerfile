@@ -18,8 +18,7 @@ RUN pnpm build
 # ---- Stage 2: Rust Builder ----
 FROM rustlang/rust:nightly AS builder
 
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
-    apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     libpq-dev \
     pkg-config \
     curl \
@@ -36,11 +35,6 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy thirdparty local dependencies (referenced in [patch.crates-io])
 COPY thirdparty/ thirdparty/
-
-# Configure crates.io mirror for faster dependency download
-RUN mkdir -p /usr/local/cargo && \
-    printf '[source.crates-io]\nreplace-with = "mirror"\n\n[source.mirror]\nregistry = "sparse+https://mirrors.bfsu.edu.cn/crates.io-index/"\n' \
-    > /usr/local/cargo/config.toml
 
 # Create dummy source to trigger dependency compilation
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
@@ -65,8 +59,7 @@ RUN cargo build --release
 # ---- Stage 3: Runtime ----
 FROM debian:bookworm-slim
 
-RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
-    apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     libpq5 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
