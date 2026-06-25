@@ -4,10 +4,10 @@ storage_path = "/app/storage/"
 [http_server]
 listen = "0.0.0.0:8000"
 openapi = false
-jwt_secret = "${REPALCE_ME}"       # empty means random value
+jwt_secret = "${REPLACE_ME}"       # empty means random value
 jwt_expire_time = 259200           # 3 days
 real_addr_header = ""
-admin_prefix = "${REPALCE_ME}"
+admin_prefix = "${REPLACE_ME}"
 max_body_size = 3145728            # 3MB
 
 [dns_server]

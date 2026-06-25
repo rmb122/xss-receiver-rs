@@ -66,7 +66,7 @@ listen = "0.0.0.0:8000"   # HTTP listen address; empty disables the HTTP server
 openapi = true            # enable OpenAPI / Swagger docs
 jwt_secret = "TEST_VALUE" # JWT key; empty means random
 jwt_expire_time = 259200  # JWT lifetime in seconds, default 3 days
-real_addr_header = ""     # header carrying the real client IP behind a proxy (e.g. X-Forwarded-For)
+real_addr_header = ""     # header carrying the real client address behind a proxy; value must be addr:port (e.g. set X-Real-Addr in nginx via proxy_set_header X-Real-Addr "$remote_addr:$remote_port"; then use X-Real-Addr)
 admin_prefix = "/super_admin/"  # admin panel prefix, must not be /
 max_body_size = 3145728   # max request body size in bytes, default 3MB
 

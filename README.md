@@ -66,7 +66,7 @@ listen = "0.0.0.0:8000"   # HTTP 监听地址，留空则不启动 HTTP 服务
 openapi = true            # 是否启用 OpenAPI / Swagger 文档
 jwt_secret = "TEST_VALUE" # JWT 密钥，留空为随机
 jwt_expire_time = 259200  # JWT 有效期（秒），默认 3 天
-real_addr_header = ""     # 反代场景下真实 IP 的 Header 名（如 X-Forwarded-For）
+real_addr_header = ""     # 反代场景下获取真实地址的 Header 名，值需为 addr:port 格式（如 nginx 配置 proxy_set_header X-Real-Addr "$remote_addr:$remote_port"; 后填 X-Real-Addr）
 admin_prefix = "/super_admin/"  # 管理后台前缀，不能为 /
 max_body_size = 3145728   # 最大请求体大小（字节），默认 3MB
 
