@@ -127,20 +127,12 @@ export async function getFileBytes(path: string): Promise<Uint8Array<ArrayBuffer
 }
 
 export function downloadFile(path: string) {
-  const filename = path.split('/').pop() || 'download'
-  const link = `${BASE_URL}/file/download?path=${encodeURIComponent(path)}`
-  const a = document.createElement('a')
-  a.href = link
-  a.download = filename
-  a.target = '_blank'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  // 后端通过 Content-Disposition 返回文件名, 直接打开即可触发下载
+  window.open(`${BASE_URL}/file/download?path=${encodeURIComponent(path)}`, '_blank')
 }
 
 // ===== 日志文件（不变）=====
 
 export function getDownloadLogFileUrl(hash: string) {
-  const token = localStorage.getItem('token')
-  return `${BASE_URL}/file/log/${encodeURIComponent(hash)}?authorization=${encodeURIComponent(token || '')}`
+  return `${BASE_URL}/file/log/${encodeURIComponent(hash)}`
 }

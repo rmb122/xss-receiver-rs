@@ -5,7 +5,7 @@
         <v-icon class="mr-2">mdi-web</v-icon>
         HTTP 日志
         <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-refresh" @click="handleManualRefresh">
+        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchLogs()">
           刷新
         </v-btn>
         <v-btn
@@ -107,15 +107,24 @@
                       >
                       </v-btn>
                     </div>
-                    <v-btn
-                      size="small"
-                      prepend-icon="mdi-file-eye-outline"
-                      variant="text"
-                      :loading="rawBodyLoadingId === item.id"
-                      @click.stop="openRawBody(item)"
-                    >
-                      查看原始请求体
-                    </v-btn>
+                    <div>
+                      <v-btn
+                        size="small"
+                        prepend-icon="mdi-file-eye-outline"
+                        variant="text"
+                        @click.stop="openRawBody(item)"
+                      >
+                        查看请求体
+                      </v-btn>
+                      <v-btn
+                        size="small"
+                        prepend-icon="mdi-download"
+                        variant="text"
+                        @click.stop="downloadRawBody(item)"
+                      >
+                        下载请求体
+                      </v-btn>
+                    </div>
                   </div>
 
                   <JsonHighlight
@@ -201,7 +210,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { UAParser } from 'ua-parser-js'
-import { getHttpLogRawBody, getHttpLogs } from '@/api/httpLog'
+import { getHttpLogRawBody, downloadHttpLogRawBody, getHttpLogs } from '@/api/httpLog'
 import { getDownloadLogFileUrl } from '@/api/file'
 import type { HttpLog } from '@/types/httpLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
@@ -285,7 +294,6 @@ const rawBodyEncoding = ref('UTF-8')
 const rawBodyText = computed(() => decodeBytes(rawBodyContent.value, rawBodyEncoding.value))
 const rawBodyLanguage = ref('plaintext')
 const rawBodyFilename = ref('raw-body.txt')
-const rawBodyLoadingId = ref<number | null>(null)
 
 // 刷新功能状态
 const autoRefresh = ref<boolean>(true)
@@ -474,7 +482,6 @@ function inferRawBodyLanguage(log: HttpLog): string {
 }
 
 async function openRawBody(log: HttpLog) {
-  rawBodyLoadingId.value = log.id
   try {
     const body = await getHttpLogRawBody(log.id)
     rawBodyContent.value = new Uint8Array(body)
@@ -485,14 +492,11 @@ async function openRawBody(log: HttpLog) {
   } catch (error) {
     console.error('获取原始请求体失败:', error)
     showErrorToast('获取失败', '无法加载原始请求体')
-  } finally {
-    rawBodyLoadingId.value = null
   }
 }
 
-// 手动刷新
-function handleManualRefresh() {
-  fetchLogs()
+function downloadRawBody(log: HttpLog) {
+  downloadHttpLogRawBody(log.id)
 }
 
 // 启动自动刷新
