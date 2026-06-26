@@ -45,14 +45,14 @@ impl HttpRoute {
         };
 
         let handler: Box<dyn HttpRouteHandler> = match value.handler_kind {
-            db::http_route::model::HandlerKind::STATIC => Box::new(StaticHandler::new(filename)),
-            db::http_route::model::HandlerKind::SCRIPT => Box::new(ScriptHandler::new(
+            db::http_route::model::HandlerKind::STATIC => Box::new(StaticHttpHandler::new(filename)),
+            db::http_route::model::HandlerKind::SCRIPT => Box::new(ScriptHttpHandler::new(
                 filename,
                 value.timeout,
                 storage.user().clone(),
                 cache,
             )),
-            db::http_route::model::HandlerKind::NONE => Box::new(NoneHandler::new()),
+            db::http_route::model::HandlerKind::NONE => Box::new(NoneHttpHandler::new()),
         };
 
         return Ok(HttpRoute {
@@ -74,11 +74,11 @@ impl DispatchRoute for HttpRoute {
     }
 }
 
-pub struct StaticHandler {
+pub struct StaticHttpHandler {
     filename: String,
 }
 
-impl StaticHandler {
+impl StaticHttpHandler {
     pub fn new<T: Into<String>>(filename: T) -> Self {
         return Self {
             filename: filename.into(),
@@ -87,7 +87,7 @@ impl StaticHandler {
 }
 
 #[async_trait]
-impl HttpRouteHandler for StaticHandler {
+impl HttpRouteHandler for StaticHttpHandler {
     async fn handle(
         &self,
         _: ParsedRequest,
@@ -106,14 +106,14 @@ impl HttpRouteHandler for StaticHandler {
     }
 }
 
-pub struct ScriptHandler {
+pub struct ScriptHttpHandler {
     filename: String,
     timeout: i32,
     user_storage: UserStorage,
     cache: ScriptCache,
 }
 
-impl ScriptHandler {
+impl ScriptHttpHandler {
     pub fn new<T: Into<String>>(
         filename: T,
         timeout: i32,
@@ -147,7 +147,7 @@ impl From<JsError> for ScriptError {
 }
 
 #[async_trait]
-impl HttpRouteHandler for ScriptHandler {
+impl HttpRouteHandler for ScriptHttpHandler {
     async fn handle(
         &self,
         request: ParsedRequest,
@@ -203,16 +203,16 @@ impl HttpRouteHandler for ScriptHandler {
     }
 }
 
-pub struct NoneHandler {}
+pub struct NoneHttpHandler {}
 
-impl NoneHandler {
+impl NoneHttpHandler {
     pub fn new() -> Self {
-        return NoneHandler {};
+        return NoneHttpHandler {};
     }
 }
 
 #[async_trait]
-impl HttpRouteHandler for NoneHandler {
+impl HttpRouteHandler for NoneHttpHandler {
     async fn handle(
         &self,
         _: ParsedRequest,
