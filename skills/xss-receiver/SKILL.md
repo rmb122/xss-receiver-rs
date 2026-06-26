@@ -8,7 +8,6 @@ description: >-
   (request/response/storage/cache), or automating it via curl/HTTP. Trigger
   terms: xss-receiver, .hjs, .djs, .djson, script engine, HTTP/DNS route,
   admin API, upload script, create route, fetch logs.
-disable-model-invocation: true
 ---
 
 # xss-receiver
