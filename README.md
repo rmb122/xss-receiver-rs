@@ -170,6 +170,21 @@ xss-receiver-rs <config_file>
 
 `base64Encode`、`base64Decode`、`urlEncode`、`urlDecode`。
 
+## AI 技能（skills）
+
+`skills/xss-receiver/` 提供了一份面向 AI 编程助手的技能（Agent Skill），让 AI 在**看不到本仓库源码**的情况下也能使用本平台的能力：
+
+- 编写脚本引擎处理器：`.hjs`（HTTP）/ `.djs`（DNS）脚本与 `.djson` 静态应答。
+- 通过后台 HTTP API 操作平台：上传脚本、创建 / 管理路由、拉取收到的请求日志。
+
+包含的文件：
+
+- `SKILL.md`：入口，能力概览与「上传脚本 → 新建路由 → 拉取最新日志」的端到端工作流。
+- `script-engine.md`：脚本引擎 API（`request` / `response` / `storage` / `cache` 与工具函数）与示例。
+- `admin-api.md`：后台 API（鉴权 / 文件 / 路由 / 日志）与 curl 端到端示例。
+
+使用方式：让 AI 助手读取 `skills/xss-receiver/SKILL.md` 即可。由于 Base path（host、`admin_prefix`）因部署而异，技能要求 AI 在调用 API 前主动向人类索取。
+
 ## 本地开发
 
 ### 前置依赖
@@ -205,6 +220,7 @@ cargo run --release -- config.toml
 │   ├── storage/        # 文件存储
 │   └── utils/          # DNS server、ip2region、JWT 等工具
 ├── frontend/           # Vue 3 + Vuetify 管理后台
+├── skills/             # 面向 AI 编程助手的技能（Agent Skill）
 ├── docker/             # Docker / Compose 部署文件
 ├── migrations/         # 数据库迁移
 └── thirdparty/         # 定制的第三方依赖（http / httparse）

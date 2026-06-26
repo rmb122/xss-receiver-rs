@@ -170,6 +170,21 @@ A `.djson` static answer file has the following structure:
 
 `base64Encode`, `base64Decode`, `urlEncode`, `urlDecode`.
 
+## AI Skill (skills)
+
+`skills/xss-receiver/` provides an Agent Skill for AI coding assistants, so an AI can use this platform's capabilities **even without access to this repository's source**:
+
+- Write script-engine handlers: `.hjs` (HTTP) / `.djs` (DNS) scripts and `.djson` static answers.
+- Operate the platform via the admin HTTP API: upload scripts, create/manage routes, and fetch received request logs.
+
+Files:
+
+- `SKILL.md`: entry point, with a capability overview and the "upload script → create route → fetch latest logs" end-to-end workflow.
+- `script-engine.md`: script-engine API (`request` / `response` / `storage` / `cache` and helpers) with examples.
+- `admin-api.md`: admin API (auth / files / routes / logs) with an end-to-end curl example.
+
+Usage: point your AI assistant at `skills/xss-receiver/SKILL.md`. Because the base path (host, `admin_prefix`) is deployment-specific, the skill instructs the AI to ask a human for it before making API calls.
+
 ## Local Development
 
 ### Prerequisites
@@ -205,6 +220,7 @@ cargo run --release -- config.toml
 │   ├── storage/        # file storage
 │   └── utils/          # DNS server, ip2region, JWT, and other helpers
 ├── frontend/           # Vue 3 + Vuetify admin panel
+├── skills/             # Agent Skill for AI coding assistants
 ├── docker/             # Docker / Compose deployment files
 ├── migrations/         # database migrations
 └── thirdparty/         # customized third-party deps (http / httparse)
