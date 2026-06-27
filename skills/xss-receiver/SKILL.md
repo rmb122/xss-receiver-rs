@@ -3,11 +3,12 @@ name: xss-receiver
 description: >-
   Operate the xss-receiver-rs platform: write its programmable HTTP/DNS handler
   scripts (.hjs / .djs / .djson) and drive its admin HTTP API to upload script
-  files, create routes, and fetch received HTTP/DNS request logs. Use when
+  files, create routes, and fetch received HTTP/DNS request logs. Useful for CTF
+  and security testing (XSS data collection, SSRF/OOB probing, DNS Log). Use when
   working with an xss-receiver-rs instance, writing its script-engine handlers
   (request/response/storage/cache), or automating it via curl/HTTP. Trigger
   terms: xss-receiver, .hjs, .djs, .djson, script engine, HTTP/DNS route,
-  admin API, upload script, create route, fetch logs.
+  admin API, upload script, create route, fetch logs, CTF, security testing.
 ---
 
 # xss-receiver
@@ -76,6 +77,10 @@ flowchart LR
 
 ## Key things to remember
 
+- **Serving a static file? Use a `STATIC` handler, not a `SCRIPT`.** If you only need to
+  return a stored file as-is (HTML page, JS payload, image, etc.), point a `STATIC` handler
+  at that file — don't write a `SCRIPT` that just calls `response.sendFile`. Reach for
+  `SCRIPT` only when the response must be built dynamically.
 - **Always ask the human for the base path first.** The full base path is
   `<host>:<port><admin_prefix>/api` (e.g. `https://example.com:8000/super_admin/api`).
   Both the host/port and `admin_prefix` are deployment-specific, secret-ish, and **not

@@ -98,6 +98,8 @@ Create/update body fields:
 
 - Create/update **compile the route set immediately**; an invalid `handler` path fails the
   request. Upload the handler file before creating the route.
+- **For a static file, set `handler_kind` to `STATIC`** and point `handler` at the file; it
+  is returned as-is (any file type). Only use `SCRIPT` when the response is built dynamically.
 - **Delete/update use the field `http_route_id`** (different from DNS routes).
 
 ```bash
