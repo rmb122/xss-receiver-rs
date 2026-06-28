@@ -45,18 +45,19 @@ pub async fn login(
     Json(request): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let mut conn = ctx.db_conn().await?;
+
+    let client_addr: SocketAddr = if let Ok(client_addr) =
+        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &headers)
+    {
+        client_addr
+    } else {
+        addr
+    };
+
     let user: Option<User> = find_user_by_username(&mut conn, &request.username).await?;
 
     if let Some(user) = user {
         if password_auth::verify_password(&request.password, &user.password).is_ok() {
-            let client_addr: SocketAddr = if let Ok(client_addr) =
-                get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &headers)
-            {
-                client_addr
-            } else {
-                addr
-            };
-
             let _ = insert_system_log(
                 &mut conn,
                 &format!(
@@ -90,6 +91,18 @@ pub async fn login(
             return Ok((response_headers, Response::<()>::ok().payload(())));
         }
     }
+
+    let _ = insert_system_log(
+        &mut conn,
+        &format!(
+            "failed login attempt for user {} from {} ({})",
+            &request.username,
+            client_addr.to_string(),
+            ctx.locator.locate(&client_addr.ip().to_string()),
+        ),
+    )
+    .await;
+
     return Err(anyhow::anyhow!("username or password error").into());
 }
 
