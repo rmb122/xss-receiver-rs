@@ -5,7 +5,7 @@
         <v-icon class="mr-2">mdi-dns-outline</v-icon>
         DNS 日志
         <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-refresh" @click="handleManualRefresh">
+        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchLogs()">
           刷新
         </v-btn>
         <v-btn
@@ -180,11 +180,6 @@ function onOptionsUpdate(options: any) {
   page.value = options.page
   pageSize.value = options.itemsPerPage
   fetchLogs()
-}
-
-function handleManualRefresh() {
-  fetchLogs()
-  showSuccessToast('已刷新')
 }
 
 function toggleAutoRefresh() {
