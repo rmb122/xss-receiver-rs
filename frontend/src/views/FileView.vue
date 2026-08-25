@@ -469,12 +469,20 @@ function cancelUpload() {
   flex-shrink: 0;
 }
 .pane-splitter {
-  flex: 0 0 4px;
+  flex: 0 0 1px;
+  margin-left: -1px;
   cursor: col-resize;
-  background-color: transparent;
   position: relative;
+  z-index: 1;
   user-select: none;
-  transition: background-color 0.15s ease;
+}
+.pane-splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
 }
 .pane-splitter::after {
   content: '';
@@ -484,9 +492,12 @@ function cancelUpload() {
   left: 50%;
   width: 1px;
   transform: translateX(-50%);
+  background-color: transparent;
+  pointer-events: none;
+  transition: background-color 0.15s ease;
 }
-.pane-splitter:hover,
-.pane-splitter.is-dragging {
+.pane-splitter:hover::after,
+.pane-splitter.is-dragging::after {
   background-color: rgba(25, 118, 210, 0.18);
 }
 .editor-pane {

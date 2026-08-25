@@ -36,13 +36,14 @@
         </v-icon>
       </div>
     </HorizontalScrollArea>
-    <v-progress-linear
-      v-if="savingPath !== null"
-      :model-value="(savingProgress ?? 0) * 100"
-      color="primary"
-      height="3"
-    />
     <div class="editor-area" :class="{ saving: savingPath !== null }">
+      <v-progress-linear
+        v-if="savingPath !== null"
+        class="save-progress"
+        :model-value="(savingProgress ?? 0) * 100"
+        color="primary"
+        height="3"
+      />
       <div v-if="!activeTab" class="welcome d-flex flex-column align-center justify-center">
         <v-icon size="64" color="grey-lighten-1">mdi-file-document-outline</v-icon>
         <div class="text-h6 mt-4 text-grey">从左侧选择文件打开</div>
@@ -488,6 +489,14 @@ defineExpose({ requestClose, getContent })
   position: relative;
 }
 .editor-area.saving {
+  pointer-events: none;
+}
+.save-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
   pointer-events: none;
 }
 .welcome {
