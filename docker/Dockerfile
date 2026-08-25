@@ -59,8 +59,9 @@ COPY src/ src/
 COPY migrations/ migrations/
 COPY diesel.toml ./
 
-# Build the actual project (only recompiles project source, not dependencies)
-RUN cargo build --release
+# The real sources can retain mtimes older than the cached dummy build. Touch
+# the crate root so Cargo cannot treat the dummy binary as up to date.
+RUN touch src/main.rs && cargo build --release
 
 # ---- Stage 3: Runtime ----
 FROM debian:bookworm-slim
