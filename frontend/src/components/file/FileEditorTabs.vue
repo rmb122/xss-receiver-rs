@@ -1,6 +1,11 @@
 <template>
   <div class="editor-tabs">
-    <div class="tabs-bar d-flex">
+    <HorizontalScrollArea
+      ref="tabsScrollArea"
+      class="tab-strip"
+      :reveal-index="activeTabIndex"
+      :layout-key="tabLayoutKey"
+    >
       <div
         v-for="tab in tabs"
         :key="tab.path"
@@ -30,7 +35,7 @@
           {{ tab.dirty ? 'mdi-circle-medium' : 'mdi-close' }}
         </v-icon>
       </div>
-    </div>
+    </HorizontalScrollArea>
     <v-progress-linear
       v-if="savingPath !== null"
       :model-value="(savingProgress ?? 0) * 100"
@@ -80,6 +85,7 @@ import { ref, shallowRef, markRaw, watch, computed, onMounted, onBeforeUnmount }
 import { monaco } from '@/monaco'
 import { fileIcon } from '@/utils/fileIcon'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import HorizontalScrollArea from '@/components/HorizontalScrollArea.vue'
 import MonacoRawEditor from '@/components/MonacoRawEditor.vue'
 import { decodeBytes } from '@/utils/encoding'
 
@@ -107,6 +113,13 @@ const emit = defineEmits<{
 
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
 
+const tabsScrollArea = ref<InstanceType<typeof HorizontalScrollArea>>()
+
+const activeTabIndex = computed(() =>
+  props.activeTab ? props.tabs.findIndex((tab) => tab.path === props.activeTab) : -1,
+)
+
+const tabLayoutKey = computed(() => props.tabs.map((tab) => tab.path).join('\0'))
 const models = new Map<string, monaco.editor.ITextModel>()
 const suppressDirtyPaths = new Set<string>()
 // shallowRef + markRaw: never let Vue deeply proxy a monaco model, or its
@@ -187,6 +200,7 @@ async function closeMany(paths: string[]) {
     )
     if (!confirmed) return
   }
+  if (paths.length > 0) tabsScrollArea.value?.preserveScrollPositionOnce()
   emit('close-many', paths)
 }
 
@@ -336,6 +350,7 @@ async function requestClose(path: string) {
     )
     if (!confirmed) return
   }
+  tabsScrollArea.value?.preserveScrollPositionOnce()
   emit('close', path)
 }
 
@@ -409,13 +424,14 @@ defineExpose({ requestClose, getContent })
   height: 100%;
   min-height: 0;
 }
-.tabs-bar {
+.tab-strip {
+  flex: 0 0 auto;
   background-color: #f0f0f0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-  overflow-x: auto;
 }
 .tab {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   padding: 6px 10px;
   border-right: 1px solid rgba(0, 0, 0, 0.08);

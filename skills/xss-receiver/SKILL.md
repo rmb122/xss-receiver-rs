@@ -107,7 +107,7 @@ flowchart LR
 
 ## Reference docs
 
-- Script-engine API (`request` / `response` / `storage` / `cache` / helpers) and script
+- Script-engine API (`request` / `response` / `storage` / `cache` / `http` / helpers) and script
   examples: see [script-engine.md](script-engine.md)
 - Admin API (auth / files / routes / logs) and an end-to-end curl example: see
   [admin-api.md](admin-api.md)

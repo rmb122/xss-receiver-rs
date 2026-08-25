@@ -207,7 +207,7 @@ Private, loopback, link-local, CGNAT, cloud-metadata, and other non-public desti
 Files:
 
 - `SKILL.md`: entry point, with a capability overview and the "upload script → create route → fetch latest logs" end-to-end workflow.
-- `script-engine.md`: script-engine API (`request` / `response` / `storage` / `cache` and helpers) with examples.
+- `script-engine.md`: script-engine API (`request` / `response` / `storage` / `cache` / `http` and helpers) with examples.
 - `admin-api.md`: admin API (auth / files / routes / logs) with an end-to-end curl example.
 
 Usage: point your AI assistant at `skills/xss-receiver/SKILL.md`. Because the base path (host, `admin_prefix`) is deployment-specific, the skill instructs the AI to ask a human for it before making API calls.

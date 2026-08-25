@@ -355,11 +355,16 @@ function openEditDialog(httpRoute: HttpRoute) {
 async function handleSave() {
   saving.value = true
   try {
+    const payload = {
+      ...form.value,
+      catalog: form.value.catalog ?? '',
+      handler: form.value.handler ?? '',
+    }
     if (isEditing.value && editingId.value !== null) {
-      await updateHttpRoute({ http_route_id: editingId.value, ...form.value })
+      await updateHttpRoute({ http_route_id: editingId.value, ...payload })
       showSuccessToast('路由更新成功')
     } else {
-      await createHttpRoute(form.value)
+      await createHttpRoute(payload)
       showSuccessToast('路由创建成功')
     }
     dialogVisible.value = false

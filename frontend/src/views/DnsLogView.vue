@@ -5,9 +5,7 @@
         <v-icon class="mr-2">mdi-dns-outline</v-icon>
         DNS 日志
         <v-spacer />
-        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchLogs()">
-          刷新
-        </v-btn>
+        <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchLogs()"> 刷新 </v-btn>
         <v-btn
           :color="autoRefresh ? 'primary' : undefined"
           prepend-icon="mdi-refresh-auto"

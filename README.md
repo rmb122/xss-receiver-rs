@@ -207,7 +207,7 @@ export default { status: upstream.statusCode, data };
 包含的文件：
 
 - `SKILL.md`：入口，能力概览与「上传脚本 → 新建路由 → 拉取最新日志」的端到端工作流。
-- `script-engine.md`：脚本引擎 API（`request` / `response` / `storage` / `cache` 与工具函数）与示例。
+- `script-engine.md`：脚本引擎 API（`request` / `response` / `storage` / `cache` / `http` 与工具函数）与示例。
 - `admin-api.md`：后台 API（鉴权 / 文件 / 路由 / 日志）与 curl 端到端示例。
 
 使用方式：让 AI 助手读取 `skills/xss-receiver/SKILL.md` 即可。由于 Base path（host、`admin_prefix`）因部署而异，技能要求 AI 在调用 API 前主动向人类索取。
