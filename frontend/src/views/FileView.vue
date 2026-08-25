@@ -132,6 +132,7 @@ onBeforeUnmount(() => {
 // ----- Tabs -----
 const tabs = ref<EditorTab[]>([])
 const activeTab = ref<string | null>(null)
+const pendingFileOpens = new Map<string, Promise<void>>()
 
 function setActive(path: string) {
   activeTab.value = path
@@ -143,6 +144,24 @@ async function openFile(path: string) {
     activeTab.value = path
     return
   }
+
+  const pending = pendingFileOpens.get(path)
+  if (pending) {
+    return pending
+  }
+
+  const openPromise = loadFileIntoTab(path)
+  pendingFileOpens.set(path, openPromise)
+  try {
+    await openPromise
+  } finally {
+    if (pendingFileOpens.get(path) === openPromise) {
+      pendingFileOpens.delete(path)
+    }
+  }
+}
+
+async function loadFileIntoTab(path: string) {
   let bytes: Uint8Array<ArrayBuffer>
   try {
     bytes = await getFileBytes(path)
@@ -153,7 +172,11 @@ async function openFile(path: string) {
     }
     throw err
   }
-  tabs.value.push({ path, bytes, encoding: 'UTF-8', dirty: false })
+
+  // The tab may have been opened by another path while the request was in flight.
+  if (!tabs.value.some((tab) => tab.path === path)) {
+    tabs.value.push({ path, bytes, encoding: 'UTF-8', dirty: false })
+  }
   activeTab.value = path
 }
 
