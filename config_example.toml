@@ -13,10 +13,16 @@ max_body_size = 3145728            # 3MB
 [dns_server]
 listen = ""
 
-[script_cache]
+[script.cache]
 max_entries = 1024
 max_entry_size = 65535
 max_ttl = 3600
+
+[script.http]
+allow_private_network = false
+timeout = 16000
+max_response_size = 8388608
+max_redirects = 8
 
 [ip2region]
 ipv4_db = "docker/ip2region_v4.xdb"

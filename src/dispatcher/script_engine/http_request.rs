@@ -3,13 +3,12 @@ use boa_engine::{
     Context, JsObject, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
 };
 use boa_engine::{JsResult, JsValue};
-use serde_json::Value;
 use std::collections::BTreeSet;
 
 use crate::utils::multimap::MultiMap;
 use crate::utils::parsed_request::{ParsedRequest, ParsedRequestBody};
 
-use super::helpers::{check_argument_count, ensure_exists};
+use super::helpers::{check_argument_count, ensure_exists, json_value_to_js_value};
 
 /// `get(key)` method for multimap-style JS objects.
 /// Reads `this[key]` and returns the first element of the array, or undefined.
@@ -62,43 +61,6 @@ fn create_multimap_object(
     }
 
     Ok(obj)
-}
-
-/// 将 serde_json::Value 递归转换为 JsValue
-fn json_value_to_js_value(value: &Value, ctx: &mut Context) -> JsResult<JsValue> {
-    match value {
-        Value::Null => Ok(JsValue::null()),
-        Value::Bool(b) => Ok(JsValue::from(*b)),
-        Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Ok(JsValue::from(i))
-            } else if let Some(f) = n.as_f64() {
-                Ok(JsValue::from(f))
-            } else {
-                Ok(JsValue::undefined())
-            }
-        }
-        Value::String(s) => Ok(JsValue::from(js_string!(s.as_str()))),
-        Value::Array(arr) => {
-            let js_arr = JsArray::new(ctx);
-            for (i, item) in arr.iter().enumerate() {
-                js_arr.set(i, json_value_to_js_value(item, ctx)?, false, ctx)?;
-            }
-            Ok(js_arr.into())
-        }
-        Value::Object(obj) => {
-            let js_obj = JsObject::with_null_proto();
-            for (key, val) in obj {
-                js_obj.set(
-                    js_string!(key.as_str()),
-                    json_value_to_js_value(val, ctx)?,
-                    false,
-                    ctx,
-                )?;
-            }
-            Ok(js_obj.into())
-        }
-    }
 }
 
 /// 创建文件对象 { filename: String, content: Uint8Array }

@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, net::SocketAddr, time::Duration};
 
 use async_trait::async_trait;
-use boa_engine::{Context, JsError, Script, Source};
+use boa_engine::JsError;
 use hickory_proto::op::ResponseCode;
 use hickory_proto::rr::RecordType;
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,10 @@ use crate::db;
 use crate::storage::{Storage, UserStorage};
 
 use super::DispatchRoute;
-use super::{ScriptCache, script_engine::register_dns_vars_to_context};
+use super::{
+    ScriptCache, ScriptHttpClient,
+    script_engine::{create_context, evaluate_module, register_dns_vars_to_context},
+};
 
 #[derive(Clone, Debug)]
 pub struct DnsRequest {
@@ -127,6 +130,7 @@ impl DnsRoute {
         value: db::dns_route::model::DnsRoute,
         storage: &Storage,
         cache: ScriptCache,
+        http_client: ScriptHttpClient,
     ) -> anyhow::Result<Self> {
         let pattern = match value.pattern_kind {
             db::dns_route::model::PatternKind::PLAIN => {
@@ -144,6 +148,7 @@ impl DnsRoute {
                 value.timeout,
                 storage.user().clone(),
                 cache,
+                http_client,
             )),
             db::dns_route::model::HandlerKind::NONE => Box::new(NoneDnsHandler::new()),
         };
@@ -203,6 +208,7 @@ pub struct ScriptDnsHandler {
     timeout: i32,
     user_storage: UserStorage,
     cache: ScriptCache,
+    http_client: ScriptHttpClient,
 }
 
 impl ScriptDnsHandler {
@@ -211,12 +217,14 @@ impl ScriptDnsHandler {
         timeout: i32,
         user_storage: UserStorage,
         cache: ScriptCache,
+        http_client: ScriptHttpClient,
     ) -> Self {
         Self {
             filename: filename.into(),
             timeout,
             user_storage,
             cache,
+            http_client,
         }
     }
 }
@@ -248,23 +256,26 @@ impl DnsRouteHandler for ScriptDnsHandler {
         let timeout = self.timeout;
         let user_storage = self.user_storage.clone();
         let cache = self.cache.clone();
+        let http_client = self.http_client.clone();
         let query_type = request.query_type;
         let script_request = request.clone();
 
         let (result, response) = task::spawn_blocking(move || {
-            let mut context = Context::default();
-            let response = register_dns_vars_to_context(&mut context, &script_request, user_storage, cache);
-            let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> =
-                Source::from_bytes(script.as_bytes());
-            let script = Script::parse(source, None, &mut context)?;
-
+            let (mut context, executor) = create_context();
+            let response = register_dns_vars_to_context(
+                &mut context,
+                &script_request,
+                user_storage,
+                cache,
+                http_client,
+            );
             tokio::runtime::Runtime::new()
                 .expect("create new async js runtime failed")
                 .block_on(async {
                     tokio::select! {
-                        v = script.evaluate_async(&mut context) => {
+                        v = evaluate_module(&script, &mut context, executor) => {
                             let v = v.map_err(|err| ScriptError(err.to_string()))?;
-                            Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
+                            Ok((v, response.cell.borrow().clone()))
                         },
                         _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),
                     }
@@ -272,7 +283,7 @@ impl DnsRouteHandler for ScriptDnsHandler {
         }).await??;
 
         Ok((
-            result.unwrap_or_else(|| serde_json::Value::Null),
+            result,
             response
                 .into_response()
                 .map(|response| response.filter_for_query(query_type)),

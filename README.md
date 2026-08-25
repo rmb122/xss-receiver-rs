@@ -12,7 +12,7 @@
   - `NONE`：仅记录请求，返回默认响应。
 - **可编程的 DNS 服务端**：同样支持基于规则的路由，可静态返回应答或通过脚本动态构造 `A` / `AAAA` / `CNAME` / `TXT` 等记录，可用作 DNS Log。
 - **完整的请求日志**：记录 HTTP / DNS 请求的来源、Header、Query、Body、上传文件等，并通过 [ip2region](https://github.com/lionsoul2014/ip2region) 进行 IP 归属地解析。
-- **内置脚本引擎**：脚本中可访问 `request`、`response`、`storage`、`cache` 等对象与若干工具函数，自带脚本缓存（基于 [moka](https://github.com/moka-rs/moka)）。
+- **内置脚本引擎**：脚本以 ES 模块运行，支持顶层 `await`，可通过 `http` 主动发送 HTTP 请求，并可访问 `request`、`response`、`storage`、`cache` 等对象。
 - **文件存储管理**：支持目录浏览、上传（含分片上传与合并）、下载、重命名、删除等，可供静态路由与脚本直接使用。
 - **现代化 Web 管理后台**：基于 Vue 3 + Vuetify，提供 HTTP / DNS 路由与日志、文件、用户、系统日志的管理界面。
 - **安全与运维友好**：JWT 鉴权、可自定义的后台前缀（`admin_prefix`）、反向代理真实 IP 解析、可选的 OpenAPI / Swagger 文档。
@@ -73,10 +73,16 @@ max_body_size = 3145728   # 最大请求体大小（字节），默认 3MB
 [dns_server]
 listen = ""               # DNS 监听地址，留空则不启动 DNS 服务
 
-[script_cache]
+[script.cache]
 max_entries = 1024        # 脚本缓存最大条目数
 max_entry_size = 65535    # 单条缓存最大字节数
 max_ttl = 3600            # 缓存最大 TTL（秒）
+
+[script.http]
+allow_private_network = false # 是否允许脚本访问私有、回环与链路本地地址
+timeout = 16000               # 单次出站请求的最长时间（毫秒）
+max_response_size = 8388608   # 单次出站响应体上限（字节）
+max_redirects = 8             # 最多自动跟随的重定向次数，0 表示不跟随
 
 [ip2region]
 ipv4_db = "docker/ip2region_v4.xdb"  # IPv4 归属地库路径
@@ -117,7 +123,9 @@ xss-receiver-rs <config_file>
 
 ## 脚本引擎 API
 
-`SCRIPT` 类型的路由会在请求到来时执行对应的 JavaScript 文件。脚本中均可使用 `request`、`response` 两个全局对象，其中 `storage`、`cache` 与全局工具函数为 HTTP 与 DNS 通用，而 `request` / `response` 因场景不同而结构不同。
+`SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行。HTTP 与 DNS 脚本均支持顶层 `await`；使用 `export default value` 将结构化数据写入请求日志的 `extra_info`，未导出时写入 `null`。静态与动态 `import` 均不受支持，路由的 `timeout` 是包括异步操作在内的总执行时限。
+
+脚本中均可使用 `request`、`response`、`storage`、`cache`、`http` 与全局工具函数；`request` / `response` 因场景不同而结构不同。
 
 ### `request`（HTTP）
 
@@ -165,6 +173,25 @@ xss-receiver-rs <config_file>
 ### `cache`（通用）
 
 `cache.set(key, value, ttl?)`、`cache.get(key)`、`cache.delete(key)`、`cache.incr(key, delta?)`。
+
+### `http`（通用）
+
+`http` 是服务端出站 HTTP 客户端，提供 `request`、`get`、`post`、`put`、`patch`、`delete`、`head` 方法，并返回 Promise：
+
+```js
+const upstream = await http.post("https://example.com/api", {
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ source: request.clientAddr }),
+  timeout: 5000,
+});
+
+const data = upstream.json();
+export default { status: upstream.statusCode, data };
+```
+
+请求选项包括 `method`、`headers`、`body`（字符串或 `Uint8Array`）、`timeout`、`maxResponseSize`、`maxRedirects` 与 `tlsVerify`。响应包含 `statusCode`、最终 `url`、多值 `headers`、`body`，以及可重复调用的 `text()` / `json()`。4xx/5xx 会正常返回；网络错误、超时、无效 JSON 或超过响应体上限时抛出异常。请求级限制只能收紧服务端配置；`tlsVerify` 默认为 `true`，请仅在确有需要时关闭。
+
+默认禁止访问私有、回环、链路本地、CGNAT 与云元数据等非公网地址，并对 DNS 解析和每次重定向重新检查。只有显式设置 `script.http.allow_private_network = true` 才会开放这些地址；系统代理不会被使用。
 
 ### 全局工具函数（通用）
 

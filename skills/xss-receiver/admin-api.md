@@ -139,7 +139,7 @@ curl -s -b cookies.txt -X POST "$BASE/http_route" \
 Main HTTP log fields: `id, client_ip, client_port, location, method, path, raw_query,
 parsed_query, header, parsed_body_type, parsed_body, file, extra_info, error_log, create_time`.
 
-- `extra_info`: the script's last-expression return value (JSON).
+- `extra_info`: the script module's `export default` value (JSON), or `null` when omitted.
 - `error_log`: the script error message (null if none).
 
 ```bash
@@ -170,7 +170,7 @@ storage.append('loot/hits.jsonl', JSON.stringify({
   t: new Date().toISOString(), from: request.clientAddr, q: request.path
 }) + '\n')
 response.send('ok')
-;({ ok: true })
+export default { ok: true }
 JS
 curl -s -b cookies.txt -X POST "$BASE/file/upload" \
   -F "path=hooks/collect.hjs" -F "file=@collect.hjs" > /dev/null

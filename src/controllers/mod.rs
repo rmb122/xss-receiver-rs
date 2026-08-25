@@ -11,7 +11,9 @@ use utoipa_swagger_ui::{Config, SwaggerUi};
 
 use crate::{
     db::{dns_route::helper::get_all_dns_routes, http_route::helper::get_all_http_routes},
-    dispatcher::{DnsDispatcher, DnsRoute, HttpDispatcher, HttpRoute, ScriptCache},
+    dispatcher::{
+        DnsDispatcher, DnsRoute, HttpDispatcher, HttpRoute, ScriptCache, ScriptHttpClient,
+    },
     startup_config::StartupConfig,
     storage::Storage,
     utils::{ip2region::Locator, jwt::JwtManager, random::get_random_bytes, response::Response},
@@ -38,6 +40,7 @@ pub struct Context {
     pub(crate) dns_dispatcher: Arc<RwLock<DnsDispatcher>>,
     pub(crate) storage: Arc<Storage>,
     pub(crate) script_cache: ScriptCache,
+    pub(crate) script_http_client: ScriptHttpClient,
 }
 
 impl Context {
@@ -74,7 +77,8 @@ impl Context {
         let mut conn = pool.get().await?;
 
         let storage = Storage::new(&config.storage_path)?;
-        let script_cache = ScriptCache::new(&config.script_cache);
+        let script_cache = ScriptCache::new(&config.script.cache);
+        let script_http_client = ScriptHttpClient::new(&config.script.http)?;
 
         Ok(Context {
             config: Arc::new(config.to_owned()),
@@ -86,18 +90,33 @@ impl Context {
                 get_all_http_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| HttpRoute::transform(x, &storage, script_cache.clone()))
+                    .map(|x| {
+                        HttpRoute::transform(
+                            x,
+                            &storage,
+                            script_cache.clone(),
+                            script_http_client.clone(),
+                        )
+                    })
                     .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
             dns_dispatcher: Arc::new(RwLock::new(DnsDispatcher::new(
                 get_all_dns_routes(&mut conn)
                     .await?
                     .into_iter()
-                    .map(|x| DnsRoute::transform(x, &storage, script_cache.clone()))
+                    .map(|x| {
+                        DnsRoute::transform(
+                            x,
+                            &storage,
+                            script_cache.clone(),
+                            script_http_client.clone(),
+                        )
+                    })
                     .collect::<anyhow::Result<Vec<_>>>()?,
             )?)),
             storage: Arc::new(storage),
             script_cache,
+            script_http_client,
         })
     }
 

@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, time::Duration};
 
 use async_trait::async_trait;
 use axum::{body::Body, http::Response};
-use boa_engine::{Context, JsError, Script, Source};
+use boa_engine::JsError;
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
@@ -11,7 +11,10 @@ use crate::storage::{Storage, UserStorage};
 use crate::utils::parsed_request::ParsedRequest;
 
 use super::DispatchRoute;
-use super::{ScriptCache, script_engine::register_http_vars_to_context};
+use super::{
+    ScriptCache, ScriptHttpClient,
+    script_engine::{create_context, evaluate_module, register_http_vars_to_context},
+};
 
 #[async_trait]
 pub trait HttpRouteHandler: Sync + Send {
@@ -33,6 +36,7 @@ impl HttpRoute {
         value: db::http_route::model::HttpRoute,
         storage: &Storage,
         cache: ScriptCache,
+        http_client: ScriptHttpClient,
     ) -> anyhow::Result<Self> {
         // 在转换的时候验证是否是有效的路径, 避免路径穿越
         let filename = storage.user().absolute_path(&value.handler)?;
@@ -45,12 +49,15 @@ impl HttpRoute {
         };
 
         let handler: Box<dyn HttpRouteHandler> = match value.handler_kind {
-            db::http_route::model::HandlerKind::STATIC => Box::new(StaticHttpHandler::new(filename)),
+            db::http_route::model::HandlerKind::STATIC => {
+                Box::new(StaticHttpHandler::new(filename))
+            }
             db::http_route::model::HandlerKind::SCRIPT => Box::new(ScriptHttpHandler::new(
                 filename,
                 value.timeout,
                 storage.user().clone(),
                 cache,
+                http_client,
             )),
             db::http_route::model::HandlerKind::NONE => Box::new(NoneHttpHandler::new()),
         };
@@ -111,6 +118,7 @@ pub struct ScriptHttpHandler {
     timeout: i32,
     user_storage: UserStorage,
     cache: ScriptCache,
+    http_client: ScriptHttpClient,
 }
 
 impl ScriptHttpHandler {
@@ -119,12 +127,14 @@ impl ScriptHttpHandler {
         timeout: i32,
         user_storage: UserStorage,
         cache: ScriptCache,
+        http_client: ScriptHttpClient,
     ) -> Self {
         return Self {
             filename: filename.into(),
             timeout,
             user_storage,
             cache,
+            http_client,
         };
     }
 }
@@ -157,21 +167,25 @@ impl HttpRouteHandler for ScriptHttpHandler {
         let timeout = self.timeout.clone();
         let user_storage = self.user_storage.clone();
         let cache = self.cache.clone();
+        let http_client = self.http_client.clone();
 
         // 在新线程中运行 js
         let (result, response) = task::spawn_blocking(move || {
-            let mut context = Context::default();
-            let response = register_http_vars_to_context(&mut context, &request, user_storage, cache);
-            let source: Source<'static, boa_engine::parser::source::UTF8Input<&[u8]>> = Source::from_bytes(script.as_bytes());
-            let script = Script::parse(source, None, &mut context)?;
-
+            let (mut context, executor) = create_context();
+            let response = register_http_vars_to_context(
+                &mut context,
+                &request,
+                user_storage,
+                cache,
+                http_client,
+            );
             tokio::runtime::Runtime::new()
                 .expect("create new async js runtime failed")
                 .block_on(async {
                     tokio::select! {
-                        v = script.evaluate_async(&mut context) => {
+                        v = evaluate_module(&script, &mut context, executor) => {
                             let v = v.map_err(|err| ScriptError(err.to_string()))?;
-                            Ok((v.to_json(&mut context).map_err(|err| ScriptError(err.to_string()))?, response.cell.borrow().clone()))
+                            Ok((v, response.cell.borrow().clone()))
                         },
                         _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),
                     }
@@ -196,10 +210,7 @@ impl HttpRouteHandler for ScriptHttpHandler {
             None => builder.body(Body::from(response.body))?,
         };
 
-        Ok((
-            result.unwrap_or_else(|| serde_json::Value::Null),
-            axum_response,
-        ))
+        Ok((result, axum_response))
     }
 }
 

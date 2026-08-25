@@ -12,7 +12,7 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
   - `NONE`: only log the request and return a default response.
 - **Programmable DNS server**: rule-based routing as well, returning static answers or dynamically constructing `A` / `AAAA` / `CNAME` / `TXT` records via scripts. Great as a DNS Log.
 - **Full request logging**: records the source, headers, query, body, uploaded files, etc. of HTTP / DNS requests, with IP geolocation powered by [ip2region](https://github.com/lionsoul2014/ip2region).
-- **Built-in script engine**: scripts can access `request`, `response`, `storage`, `cache`, and several helper functions, with a built-in script cache (based on [moka](https://github.com/moka-rs/moka)).
+- **Built-in script engine**: scripts run as ES modules with top-level `await`, can make outbound HTTP requests through `http`, and can access `request`, `response`, `storage`, and `cache`.
 - **File storage management**: browse directories, upload (including chunked upload and merge), download, rename, and delete files, usable directly by static routes and scripts.
 - **Modern web admin panel**: built with Vue 3 + Vuetify, providing management for HTTP / DNS routes and logs, files, users, and system logs.
 - **Security & ops friendly**: JWT authentication, customizable admin prefix (`admin_prefix`), real client IP resolution behind reverse proxies, and optional OpenAPI / Swagger docs.
@@ -73,10 +73,16 @@ max_body_size = 3145728   # max request body size in bytes, default 3MB
 [dns_server]
 listen = ""               # DNS listen address; empty disables the DNS server
 
-[script_cache]
+[script.cache]
 max_entries = 1024        # max number of cache entries
 max_entry_size = 65535    # max bytes per entry
 max_ttl = 3600            # max cache TTL in seconds
+
+[script.http]
+allow_private_network = false # whether scripts may access private/loopback/link-local destinations
+timeout = 16000               # maximum time per outbound request in milliseconds
+max_response_size = 8388608   # maximum outbound response body size in bytes
+max_redirects = 8             # maximum redirects to follow; 0 disables redirects
 
 [ip2region]
 ipv4_db = "docker/ip2region_v4.xdb"  # path to the IPv4 geolocation database
@@ -117,7 +123,9 @@ A `.djson` static answer file has the following structure:
 
 ## Script Engine API
 
-`SCRIPT` routes execute the corresponding JavaScript file when a request arrives. Both the `request` and `response` globals are always available; `storage`, `cache`, and the helper functions are shared between HTTP and DNS, while `request` / `response` differ in shape per scenario.
+`SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`. Use `export default value` to write structured data to the request log's `extra_info`; omitting the export stores `null`. Static and dynamic `import` are unsupported. The route's `timeout` is the overall execution limit, including asynchronous work.
+
+The `request`, `response`, `storage`, `cache`, `http`, and global helper functions are available to scripts; `request` / `response` differ in shape per scenario.
 
 ### `request` (HTTP)
 
@@ -165,6 +173,25 @@ A `.djson` static answer file has the following structure:
 ### `cache` (shared)
 
 `cache.set(key, value, ttl?)`, `cache.get(key)`, `cache.delete(key)`, `cache.incr(key, delta?)`.
+
+### `http` (shared)
+
+`http` is the server-side outbound HTTP client. It provides `request`, `get`, `post`, `put`, `patch`, `delete`, and `head`, all returning a Promise:
+
+```js
+const upstream = await http.post("https://example.com/api", {
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ source: request.clientAddr }),
+  timeout: 5000,
+});
+
+const data = upstream.json();
+export default { status: upstream.statusCode, data };
+```
+
+Request options are `method`, `headers`, `body` (a string or `Uint8Array`), `timeout`, `maxResponseSize`, `maxRedirects`, and `tlsVerify`. Responses expose `statusCode`, final `url`, multi-value `headers`, `body`, and repeatable `text()` / `json()` methods. HTTP 4xx/5xx responses resolve normally; network errors, timeouts, invalid JSON, and oversized bodies throw. Per-request limits may only tighten the server configuration. `tlsVerify` defaults to `true` and should only be disabled when necessary.
+
+Private, loopback, link-local, CGNAT, cloud-metadata, and other non-public destinations are blocked by default, with DNS results and every redirect checked again. Set `script.http.allow_private_network = true` explicitly to permit them. System proxies are not used.
 
 ### Global helper functions (shared)
 

@@ -7,13 +7,15 @@ functions are shared by both HTTP and DNS scripts.
 
 ## Execution model
 
-- `async` / `await` are supported (the script is evaluated asynchronously).
+- Each `.hjs` / `.djs` file is an ES module (and therefore runs in strict mode).
+- Top-level `await` is supported.
 - The route's `timeout` (milliseconds) aborts the script when reached and logs an error.
-- The script's **last expression value** is serialized to JSON and written to that request
-  log's `extra_info` field — use it to attach structured info.
+- The module's `export default` value is serialized to JSON and written to that request
+  log's `extra_info` field. If it is omitted, `extra_info` is `null`.
 - A thrown exception is recorded in the log's `error_log` field.
-- The engine is a standalone JS runtime: there is **no** Node.js, no `require`/`import`, no
-  `fetch`, no filesystem access except through the `storage` object below.
+- The engine is a standalone JS runtime: there is no Node.js or `require`; static and
+  dynamic `import` are unsupported. There is no browser-global `fetch`; use the server-side
+  `http` object below. Filesystem access is available only through `storage`.
 
 ## Shared: `storage`
 
@@ -60,6 +62,55 @@ Constraints:
   if omitted, the max TTL is used.
 - `key length + value size` must not exceed the server's configured max entry size.
 - `incr` errors if the existing cached value is not a number.
+
+## Shared: `http`
+
+Server-side outbound HTTP client, available to both HTTP and DNS scripts. All methods return
+a Promise and buffer the complete response body before resolving.
+
+```ts
+interface HttpRequestOptions {
+  method?: string
+  headers?: Record<string, string | string[]>
+  body?: string | Uint8Array
+  timeout?: number          // milliseconds
+  maxResponseSize?: number  // bytes
+  maxRedirects?: number
+  tlsVerify?: boolean       // defaults to true
+}
+type HttpMethodOptions = Omit<HttpRequestOptions, 'method'>
+
+interface HttpClientResponse {
+  readonly statusCode: number
+  readonly url: string
+  readonly headers: Readonly<Record<string, readonly string[]>>
+  readonly body: Uint8Array
+  text(): string
+  json(): any
+}
+
+http.request(url: string, options?: HttpRequestOptions): Promise<HttpClientResponse>
+http.get(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+http.post(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+http.put(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+http.patch(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+http.delete(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+http.head(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>
+```
+
+- Bodies are raw strings or bytes; JSON is not encoded automatically.
+- `body`, `text()`, and `json()` are repeatable because the response is buffered. `json()`
+  throws a `SyntaxError` when the body is not valid JSON.
+- HTTP error statuses such as 404 and 500 resolve normally. Validation, DNS, connection,
+  TLS, timeout, redirect, and response-size failures reject the Promise.
+- Request-level `timeout`, `maxResponseSize`, and `maxRedirects` may only reduce the server's
+  configured limits. `maxRedirects: 0` disables redirect following.
+- TLS certificate validation is enabled by default. `tlsVerify: false` disables it for that
+  request and should only be used deliberately.
+- Private, loopback, link-local, CGNAT, cloud-metadata, and other non-public targets are
+  blocked by default. The policy is enforced on literal IPs, DNS results, and every redirect.
+  A server administrator can opt in with `script.http.allow_private_network = true`.
+- System proxy settings are ignored.
 
 ## Shared: global helper functions
 
@@ -171,8 +222,7 @@ storage.append(`loot/${day}.jsonl`, JSON.stringify(data) + "\n");
 response.sendHeader("Content-Type", "image/gif");
 response.send(base64Decode("R0lGODlhAQABAAAAACwAAAAAAQABAAA="));
 
-// last expression -> stored in this log's extra_info
-({ collected: true, who: data.from });
+export default { collected: true, who: data.from };
 ```
 
 ### 2. Dynamic DNS Log answer (`.djs`)
@@ -186,7 +236,7 @@ storage.append(
 );
 
 response.answer("A", "1.2.3.4", 60);
-({ name: request.name, hits });
+export default { name: request.name, hits };
 ```
 
 ### 3. Simple rate-limit counter with cache (`.hjs`)
@@ -201,5 +251,25 @@ if (count > 100) {
 } else {
   response.send("ok");
 }
-({ count });
+export default { count };
+```
+
+### 4. Call an upstream API with top-level `await` (`.hjs` or `.djs`)
+
+```js
+const upstream = await http.post("https://example.com/events", {
+  headers: {
+    "content-type": "application/json",
+    "x-source": "xss-receiver",
+  },
+  body: JSON.stringify({ client: request.clientAddr }),
+  timeout: 5000,
+  maxResponseSize: 1024 * 1024,
+});
+
+export default {
+  status: upstream.statusCode,
+  finalUrl: upstream.url,
+  result: upstream.json(),
+};
 ```

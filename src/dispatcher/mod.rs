@@ -9,3 +9,4 @@ pub use dns_route::{
 };
 pub use http_route::HttpRoute;
 pub use script_engine::cache::ScriptCache;
+pub use script_engine::http_client::ScriptHttpClient;

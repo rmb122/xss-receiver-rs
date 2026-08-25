@@ -33,8 +33,44 @@ interface Cache {
   incr(key: string, delta?: number, ttl?: number): number;
 }
 
+interface HttpRequestOptions {
+  method?: string;
+  headers?: Record<string, string | string[]>;
+  body?: string | Uint8Array;
+  /** Milliseconds; may only reduce the server limit. */
+  timeout?: number;
+  /** Bytes; may only reduce the server limit. */
+  maxResponseSize?: number;
+  /** May only reduce the server limit; zero disables redirects. */
+  maxRedirects?: number;
+  /** Defaults to true. */
+  tlsVerify?: boolean;
+}
+
+type HttpMethodOptions = Omit<HttpRequestOptions, 'method'>;
+
+interface HttpClientResponse {
+  readonly statusCode: number;
+  readonly url: string;
+  readonly headers: Readonly<Record<string, readonly string[]>>;
+  readonly body: Uint8Array;
+  text(): string;
+  json(): any;
+}
+
+interface HttpClient {
+  request(url: string, options?: HttpRequestOptions): Promise<HttpClientResponse>;
+  get(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+  post(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+  put(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+  patch(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+  delete(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+  head(url: string, options?: HttpMethodOptions): Promise<HttpClientResponse>;
+}
+
 declare const storage: Storage;
 declare const cache: Cache;
+declare const http: HttpClient;
 
 declare function base64Encode(data: string | Uint8Array): string;
 declare function base64Decode(data: string): Uint8Array;
