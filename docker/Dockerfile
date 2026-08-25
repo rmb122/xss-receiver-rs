@@ -20,7 +20,9 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN pnpm build
 
 # ---- Stage 2: Rust Builder ----
-FROM rustlang/rust:nightly AS builder
+# Keep the builder and runtime on the same Debian release so the compiled
+# binary never requires a newer glibc than the runtime image provides.
+FROM rustlang/rust:nightly-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
     libpq-dev \
