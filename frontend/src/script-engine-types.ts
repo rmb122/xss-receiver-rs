@@ -3,6 +3,27 @@
  * .hjs 使用 HTTP handler 类型，.djs 使用 DNS handler 类型。
  */
 const commonScriptEngineTypes = `
+/// <reference no-default-lib="true"/>
+/// <reference lib="es2024" />
+/// <reference lib="esnext.array" />
+/// <reference lib="esnext.collection" />
+/// <reference lib="esnext.error" />
+/// <reference lib="esnext.float16" />
+/// <reference lib="esnext.promise" />
+/// <reference lib="esnext.sharedmemory" />
+
+/** Boa exposes the intrinsic TypedArray constructor as a global, but it cannot be constructed directly. */
+interface TypedArrayConstructor {
+  readonly prototype: object;
+  readonly [Symbol.species]: TypedArrayConstructor;
+}
+
+declare const TypedArray: TypedArrayConstructor;
+
+/** Annex B globals enabled by the backend's boa_engine feature set. */
+declare function escape(value: string): string;
+declare function unescape(value: string): string;
+
 type EntryKind = 'file' | 'directory';
 
 interface Entry {
