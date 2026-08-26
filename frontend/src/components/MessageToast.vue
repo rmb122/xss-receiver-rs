@@ -410,7 +410,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .message-toast-container {
   position: fixed;
-  top: calc(var(--v-layout-top, 0px) + 16px);
+  top: calc(var(--v-layout-top, 0px) + 70px);
   right: 24px;
   width: min(360px, calc(100vw - 48px));
   z-index: 9999;
