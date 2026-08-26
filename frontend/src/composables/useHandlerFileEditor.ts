@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { chunkedUpload, FileTooLargeError, getFileBytes } from '@/api/file'
+import { uploadFile, FileTooLargeError, getFileBytes } from '@/api/file'
 import { formatFileSize } from '@/utils/format'
 import { showErrorToast, showSuccessToast } from '@/utils/toast'
 
@@ -51,7 +51,7 @@ export function useHandlerFileEditor() {
   async function saveHandlerFile(bytes: Uint8Array<ArrayBuffer>, closeAfterSave: boolean) {
     savingHandler.value = true
     try {
-      await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
+      await uploadFile(editingHandlerFile.value.path, new Blob([bytes]))
       editingHandlerFile.value.bytes = bytes
       showSuccessToast('保存成功')
       if (closeAfterSave) {

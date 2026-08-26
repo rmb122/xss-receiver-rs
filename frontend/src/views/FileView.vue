@@ -75,7 +75,7 @@ import {
   rename as apiRename,
   getFileBytes,
   FileTooLargeError,
-  chunkedUpload,
+  uploadFile,
   downloadFile,
 } from '@/api/file'
 import { showErrorToast, showSuccessToast } from '@/utils/toast'
@@ -246,7 +246,7 @@ async function saveTab(path: string) {
   try {
     const encoded = iconv.encode(content, tab.encoding)
     const blob = new Blob([encoded], { type: 'application/octet-stream' })
-    await chunkedUpload(path, blob, (p) => {
+    await uploadFile(path, blob, (p) => {
       savingProgress.value = p
     })
     tab.bytes = new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength)
@@ -383,7 +383,7 @@ async function onFormSubmit(value: string) {
       case 'new-file': {
         const newPath = target.path ? `${target.path}/${value}` : value
         const blob = new Blob([''], { type: 'text/plain' })
-        await chunkedUpload(newPath, blob)
+        await uploadFile(newPath, blob)
         showSuccessToast('文件创建成功')
         await explorer.value?.refreshNode(target)
         break
@@ -445,7 +445,7 @@ async function doUpload(dir: string, file: File) {
   uploadProgress.value = 0
   uploadDialog.value = true
   try {
-    await chunkedUpload(path, file, (p) => {
+    await uploadFile(path, file, (p) => {
       uploadProgress.value = p
     })
     showSuccessToast(`"${file.name}" 上传成功`)

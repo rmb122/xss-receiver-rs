@@ -42,13 +42,30 @@ export function rename(src: string, dst: string) {
 
 // ===== 上传 =====
 
-export function uploadFile(path: string, file: Blob) {
+const SINGLE_UPLOAD_MAX_SIZE = 900 * 1024 // 900 KiB
+
+async function directUpload(path: string, file: Blob, onProgress?: (progress: number) => void) {
   const formData = new FormData()
   formData.append('path', path)
   formData.append('file', file)
-  return request.post<boolean>('/file/upload', formData, {
+
+  const result = await request.post<boolean>('/file/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) {
+        onProgress(e.loaded / e.total)
+      }
+    },
   })
+  if (onProgress) onProgress(1)
+  return result
+}
+
+export function uploadFile(path: string, file: Blob, onProgress?: (progress: number) => void) {
+  if (file.size > SINGLE_UPLOAD_MAX_SIZE) {
+    return chunkedUpload(path, file, onProgress)
+  }
+  return directUpload(path, file, onProgress)
 }
 
 function uploadPart(chunk: Blob, onProgress?: (progress: number) => void) {
