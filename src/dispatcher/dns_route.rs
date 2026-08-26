@@ -13,7 +13,9 @@ use crate::storage::{Storage, UserStorage};
 use super::DispatchRoute;
 use super::{
     ScriptCache, ScriptHttpClient,
-    script_engine::{create_context, evaluate_module, register_dns_vars_to_context},
+    script_engine::{
+        create_module_context, evaluate_module_from_path, register_dns_vars_to_context,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -252,16 +254,19 @@ impl DnsRouteHandler for ScriptDnsHandler {
         &self,
         request: DnsRequest,
     ) -> anyhow::Result<(serde_json::Value, Option<DnsResponse>)> {
-        let script = tokio::fs::read_to_string(&self.filename).await?;
+        let filename = tokio::fs::canonicalize(&self.filename).await?;
+        let script = tokio::fs::read_to_string(&filename).await?;
         let timeout = self.timeout;
         let user_storage = self.user_storage.clone();
+        let module_root = user_storage.absolute_path("")?;
         let cache = self.cache.clone();
         let http_client = self.http_client.clone();
         let query_type = request.query_type;
         let script_request = request.clone();
 
         let (result, response) = task::spawn_blocking(move || {
-            let (mut context, executor) = create_context();
+            let (mut context, executor, module_loader) =
+                create_module_context(module_root.as_ref())?;
             let response = register_dns_vars_to_context(
                 &mut context,
                 &script_request,
@@ -273,7 +278,7 @@ impl DnsRouteHandler for ScriptDnsHandler {
                 .expect("create new async js runtime failed")
                 .block_on(async {
                     tokio::select! {
-                        v = evaluate_module(&script, &mut context, executor) => {
+                        v = evaluate_module_from_path(&script, &filename, &mut context, executor, module_loader) => {
                             let v = v.map_err(|err| ScriptError(err.to_string()))?;
                             Ok((v, response.cell.borrow().clone()))
                         },

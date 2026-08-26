@@ -12,7 +12,7 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
   - `NONE`: only log the request and return a default response.
 - **Programmable DNS server**: rule-based routing as well, returning static answers or dynamically constructing `A` / `AAAA` / `CNAME` / `TXT` records via scripts. Great as a DNS Log.
 - **Full request logging**: records the source, headers, query, body, uploaded files, etc. of HTTP / DNS requests, with IP geolocation powered by [ip2region](https://github.com/lionsoul2014/ip2region).
-- **Built-in script engine**: scripts run as ES modules with top-level `await`, can make outbound HTTP requests through `http`, and can access `request`, `response`, `storage`, and `cache`.
+- **Built-in script engine**: scripts run as ES modules with top-level `await`, can import other modules from storage, make outbound HTTP requests through `http`, and access `request`, `response`, `storage`, and `cache`.
 - **File storage management**: browse directories, upload (including chunked upload and merge), download, rename, and delete files, usable directly by static routes and scripts.
 - **Modern web admin panel**: built with Vue 3 + Vuetify, providing management for HTTP / DNS routes and logs, files, users, and system logs.
 - **Security & ops friendly**: JWT authentication, customizable admin prefix (`admin_prefix`), real client IP resolution behind reverse proxies, and optional OpenAPI / Swagger docs.
@@ -99,11 +99,11 @@ xss-receiver-rs <config_file>
 
 A route's handler points to a file in storage. The platform defines a set of extensions for different purposes, and the admin panel editor uses them to provide syntax highlighting, type hints, and schema validation:
 
-| Extension | Purpose                                         | Editor support                                                                 |
-| --------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
-| `.hjs`    | HTTP `SCRIPT` handler script (JavaScript)       | JS highlighting + HTTP script-engine type hints (`request` / `response`, etc.) |
-| `.djs`    | DNS `SCRIPT` handler script (JavaScript)        | JS highlighting + DNS script-engine type hints (`request` / `response`)        |
-| `.djson`  | static answer for a DNS `STATIC` handler (JSON) | JSON highlighting + DNS answer schema validation                               |
+| Extension | Purpose                                           | Editor support                                                                 |
+| --------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `.hjs`    | HTTP `SCRIPT` handler or HTTP-specific ESM module | JS highlighting + HTTP script-engine type hints (`request` / `response`, etc.) |
+| `.djs`    | DNS `SCRIPT` handler or DNS-specific ESM module   | JS highlighting + DNS script-engine type hints (`request` / `response`)        |
+| `.djson`  | static answer for a DNS `STATIC` handler (JSON)   | JSON highlighting + DNS answer schema validation                               |
 
 A `.djson` static answer file has the following structure:
 
@@ -119,13 +119,28 @@ A `.djson` static answer file has the following structure:
 - `ttl`: default 60.
 - `answers[].type`: `A` / `AAAA` / `CNAME` / `TXT`.
 
-> These extensions are conventions for the editing experience. The backend reads and runs the file according to the handler configuration, while an HTTP `STATIC` handler can point to any kind of file and return it as-is.
+> These extensions are editing conventions. The entry route, not an imported file's extension, determines which HTTP / DNS globals a module receives. The admin editor provides hints for the current file only and does not analyze exports across files. An HTTP `STATIC` handler can point to any file type and return it verbatim.
 
 ## Script Engine API
 
-`SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`. Use `export default value` to write structured data to the request log's `extra_info`; omitting the export stores `null`. Static and dynamic `import` are unsupported. The route's `timeout` is the overall execution limit, including asynchronous work.
+`SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`, static `import`, and dynamic `import()`. Use `export default value` in the entry module to write structured data to the request log's `extra_info`; omitting it stores `null`. The route's `timeout` is the overall execution limit, including asynchronous work.
 
 The `request`, `response`, `storage`, `cache`, `http`, and global helper functions are available to scripts; `request` / `response` differ in shape per scenario.
+
+### Module loading
+
+Scripts can import other ESM files from user storage:
+
+```js
+import { normalize } from './lib/normalize.hjs'
+const shared = await import('shared/utils.js')
+```
+
+- `./` and `../` resolve relative to the importing module. Specifiers without either prefix resolve from the user-storage root. Normalized paths may not escape that root.
+- Specifiers must contain the exact filename; the loader does not append `.js` or resolve `index.js` automatically.
+- Extensions are unrestricted and every dependency is parsed as UTF-8 ESM JavaScript. CommonJS `require`, JSON modules, npm / Node modules, and URL imports are unsupported.
+- Dependencies share the entry module's context. An HTTP route gives every dependency HTTP `request` / `response` globals, while a DNS route gives every dependency the DNS versions, regardless of file extension.
+- A resolved path is loaded and evaluated once per request. Each new request creates a fresh context and rereads the entry and its dependencies. Only the entry module's `export default` is written to the request log.
 
 ### `request` (HTTP)
 
@@ -179,14 +194,14 @@ The `request`, `response`, `storage`, `cache`, `http`, and global helper functio
 `http` is the server-side outbound HTTP client. It provides `request`, `get`, `post`, `put`, `patch`, `delete`, and `head`, all returning a Promise:
 
 ```js
-const upstream = await http.post("https://example.com/api", {
-  headers: { "content-type": "application/json" },
+const upstream = await http.post('https://example.com/api', {
+  headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ source: request.clientAddr }),
   timeout: 5000,
-});
+})
 
-const data = upstream.json();
-export default { status: upstream.statusCode, data };
+const data = upstream.json()
+export default { status: upstream.statusCode, data }
 ```
 
 Request options are `method`, `headers`, `body` (a string or `Uint8Array`), `timeout`, `maxResponseSize`, `maxRedirects`, and `tlsVerify`. Responses expose `statusCode`, final `url`, multi-value `headers`, `body`, and repeatable `text()` / `json()` methods. HTTP 4xx/5xx responses resolve normally; network errors, timeouts, invalid JSON, and oversized bodies throw. Per-request limits may only tighten the server configuration. `tlsVerify` defaults to `true` and should only be disabled when necessary.
@@ -201,7 +216,7 @@ Private, loopback, link-local, CGNAT, cloud-metadata, and other non-public desti
 
 `skills/xss-receiver/` provides an Agent Skill for AI coding assistants, so an AI can use this platform's capabilities **even without access to this repository's source**:
 
-- Write script-engine handlers: `.hjs` (HTTP) / `.djs` (DNS) scripts and `.djson` static answers.
+- Write script-engine handlers and modules: `.hjs` (HTTP) / `.djs` (DNS) scripts, reusable ESM modules, and `.djson` static answers.
 - Operate the platform via the admin HTTP API: upload scripts, create/manage routes, and fetch received request logs.
 
 Files:

@@ -13,9 +13,28 @@ functions are shared by both HTTP and DNS scripts.
 - The module's `export default` value is serialized to JSON and written to that request
   log's `extra_info` field. If it is omitted, `extra_info` is `null`.
 - A thrown exception is recorded in the log's `error_log` field.
-- The engine is a standalone JS runtime: there is no Node.js or `require`; static and
-  dynamic `import` are unsupported. There is no browser-global `fetch`; use the server-side
-  `http` object below. Filesystem access is available only through `storage`.
+- The engine is a standalone JS runtime: there is no Node.js or `require`. Static `import`
+  and dynamic `import()` can load ESM files from user storage. There is no browser-global
+  `fetch`; use the server-side `http` object below. Other filesystem access is available
+  only through `storage`.
+
+## Module imports
+
+```js
+import { normalize } from './lib/normalize.hjs'
+const shared = await import('shared/utils.js')
+```
+
+- `./` and `../` resolve relative to the importing module. Other specifiers resolve from
+  the user-storage root. Normalized paths cannot escape that root.
+- Specify the exact filename. There is no automatic `.js` suffix or `index.js` lookup.
+- Every imported file is parsed as UTF-8 ESM JavaScript, regardless of extension. JSON,
+  npm / Node, and URL modules are unsupported.
+- All modules use the entry route's context. An HTTP entry gives imported `.js`, `.hjs`,
+  or `.djs` files HTTP globals; a DNS entry gives them DNS globals. Extensions only control
+  the admin editor's per-file hints, so prefer `.js` for context-neutral shared modules.
+- A module runs once per request and is reread in the next request. Only the entry module's
+  `export default` is stored in the request log.
 
 ## Shared: `storage`
 
@@ -212,64 +231,61 @@ A DNS `STATIC` handler points to a JSON file:
 const data = {
   time: new Date().toISOString(),
   from: request.clientAddr,
-  ua: request.headers.get("user-agent"),
-  cookie: request.query.get("c") || request.forms.get("c") || "",
-};
+  ua: request.headers.get('user-agent'),
+  cookie: request.query.get('c') || request.forms.get('c') || '',
+}
 
-const day = data.time.slice(0, 10);
-storage.append(`loot/${day}.jsonl`, JSON.stringify(data) + "\n");
+const day = data.time.slice(0, 10)
+storage.append(`loot/${day}.jsonl`, JSON.stringify(data) + '\n')
 
-response.sendHeader("Content-Type", "image/gif");
-response.send(base64Decode("R0lGODlhAQABAAAAACwAAAAAAQABAAA="));
+response.sendHeader('Content-Type', 'image/gif')
+response.send(base64Decode('R0lGODlhAQABAAAAACwAAAAAAQABAAA='))
 
-export default { collected: true, who: data.from };
+export default { collected: true, who: data.from }
 ```
 
 ### 2. Dynamic DNS Log answer (`.djs`)
 
 ```js
 // Count queries per name, log the query, always answer 1.2.3.4.
-const hits = cache.incr(`dns:${request.name}`, 1, 3600);
-storage.append(
-  "dns/queries.log",
-  `${request.clientAddr} ${request.type} ${request.name}\n`,
-);
+const hits = cache.incr(`dns:${request.name}`, 1, 3600)
+storage.append('dns/queries.log', `${request.clientAddr} ${request.type} ${request.name}\n`)
 
-response.answer("A", "1.2.3.4", 60);
-export default { name: request.name, hits };
+response.answer('A', '1.2.3.4', 60)
+export default { name: request.name, hits }
 ```
 
 ### 3. Simple rate-limit counter with cache (`.hjs`)
 
 ```js
-const key = `rl:${request.clientAddr}`;
-const count = cache.incr(key, 1, 60); // 60s window
+const key = `rl:${request.clientAddr}`
+const count = cache.incr(key, 1, 60) // 60s window
 
 if (count > 100) {
-  response.sendStatus(429);
-  response.send("rate limited");
+  response.sendStatus(429)
+  response.send('rate limited')
 } else {
-  response.send("ok");
+  response.send('ok')
 }
-export default { count };
+export default { count }
 ```
 
 ### 4. Call an upstream API with top-level `await` (`.hjs` or `.djs`)
 
 ```js
-const upstream = await http.post("https://example.com/events", {
+const upstream = await http.post('https://example.com/events', {
   headers: {
-    "content-type": "application/json",
-    "x-source": "xss-receiver",
+    'content-type': 'application/json',
+    'x-source': 'xss-receiver',
   },
   body: JSON.stringify({ client: request.clientAddr }),
   timeout: 5000,
   maxResponseSize: 1024 * 1024,
-});
+})
 
 export default {
   status: upstream.statusCode,
   finalUrl: upstream.url,
   result: upstream.json(),
-};
+}
 ```

@@ -2,12 +2,12 @@
 name: xss-receiver
 description: >-
   Operate the xss-receiver-rs platform: write its programmable HTTP/DNS handler
-  scripts (.hjs / .djs / .djson) and drive its admin HTTP API to upload script
+  scripts and modules (.js / .hjs / .djs / .djson) and drive its admin HTTP API to upload script
   files, create routes, and fetch received HTTP/DNS request logs. Useful for CTF
   and security testing (XSS data collection, SSRF/OOB probing, DNS Log). Use when
   working with an xss-receiver-rs instance, writing its script-engine handlers
   (request/response/storage/cache/http), or automating it via curl/HTTP. Trigger
-  terms: xss-receiver, .hjs, .djs, .djson, script engine, HTTP/DNS route,
+  terms: xss-receiver, .js, .hjs, .djs, .djson, script engine, HTTP/DNS route,
   admin API, upload script, create route, fetch logs, CTF, security testing.
 ---
 
@@ -40,6 +40,8 @@ reading its source code. It helps with two kinds of tasks:
   and DNS scripts.
 - **Outbound HTTP client**: both script types can use top-level `await` with the shared
   server-side `http` object.
+- **Storage ESM imports**: handlers can use static `import` or dynamic `import()` to load
+  reusable JavaScript modules from storage.
 - **Full request logging**: source address, headers, query, body, uploaded files, plus
   IP geolocation.
 - **Admin API + web admin UI**: JWT-authenticated; everything is callable under
@@ -51,11 +53,11 @@ A handler points to one file in storage. These extensions are conventions (the a
 editor uses them for highlighting / type hints); the server reads the file the handler
 config points to:
 
-| Extension | Purpose                            |
-| --------- | ---------------------------------- |
-| `.hjs`    | HTTP `SCRIPT` handler (JavaScript) |
-| `.djs`    | DNS `SCRIPT` handler (JavaScript)  |
-| `.djson`  | DNS `STATIC` answer (JSON)         |
+| Extension | Purpose                                      |
+| --------- | -------------------------------------------- |
+| `.hjs`    | HTTP `SCRIPT` handler or HTTP-focused module |
+| `.djs`    | DNS `SCRIPT` handler or DNS-focused module   |
+| `.djson`  | DNS `STATIC` answer (JSON)                   |
 
 A `STATIC` HTTP handler can point to any file type and returns it verbatim.
 
@@ -102,6 +104,10 @@ flowchart LR
   an error is logged.
 - **Script return value**: scripts are ES modules; `export default value` is serialized to
   JSON and stored in that request log's `extra_info` field. Top-level `await` is supported.
+- **Module imports**: static `import` and dynamic `import()` load exact paths from user
+  storage. Relative specifiers resolve from the importing file; other specifiers resolve
+  from the storage root. Imported modules always inherit the entry route's HTTP or DNS
+  globals, regardless of their extension.
 - **Field name gotcha**: HTTP route delete/update use `http_route_id`; DNS route delete/update
   use `route_id`.
 

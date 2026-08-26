@@ -12,7 +12,7 @@
   - `NONE`：仅记录请求，返回默认响应。
 - **可编程的 DNS 服务端**：同样支持基于规则的路由，可静态返回应答或通过脚本动态构造 `A` / `AAAA` / `CNAME` / `TXT` 等记录，可用作 DNS Log。
 - **完整的请求日志**：记录 HTTP / DNS 请求的来源、Header、Query、Body、上传文件等，并通过 [ip2region](https://github.com/lionsoul2014/ip2region) 进行 IP 归属地解析。
-- **内置脚本引擎**：脚本以 ES 模块运行，支持顶层 `await`，可通过 `http` 主动发送 HTTP 请求，并可访问 `request`、`response`、`storage`、`cache` 等对象。
+- **内置脚本引擎**：脚本以 ES 模块运行，支持顶层 `await`，可从 storage 导入其他模块、通过 `http` 主动发送 HTTP 请求，并可访问 `request`、`response`、`storage`、`cache` 等对象。
 - **文件存储管理**：支持目录浏览、上传（含分片上传与合并）、下载、重命名、删除等，可供静态路由与脚本直接使用。
 - **现代化 Web 管理后台**：基于 Vue 3 + Vuetify，提供 HTTP / DNS 路由与日志、文件、用户、系统日志的管理界面。
 - **安全与运维友好**：JWT 鉴权、可自定义的后台前缀（`admin_prefix`）、反向代理真实 IP 解析、可选的 OpenAPI / Swagger 文档。
@@ -99,11 +99,11 @@ xss-receiver-rs <config_file>
 
 路由的处理器（handler）指向存储中的一个文件。平台为不同用途约定了一组扩展名，管理后台的编辑器会据此自动提供语法高亮、类型提示与 Schema 校验：
 
-| 扩展名   | 用途                                   | 编辑器支持                                                   |
-| -------- | -------------------------------------- | ------------------------------------------------------------ |
-| `.hjs`   | HTTP `SCRIPT` 处理器脚本（JavaScript） | JS 高亮 + HTTP 脚本引擎类型提示（`request` / `response` 等） |
-| `.djs`   | DNS `SCRIPT` 处理器脚本（JavaScript）  | JS 高亮 + DNS 脚本引擎类型提示（`request` / `response`）     |
-| `.djson` | DNS `STATIC` 处理器的静态应答（JSON）  | JSON 高亮 + DNS 应答 Schema 校验                             |
+| 扩展名   | 用途                                      | 编辑器支持                                                   |
+| -------- | ----------------------------------------- | ------------------------------------------------------------ |
+| `.hjs`   | HTTP `SCRIPT` 处理器或 HTTP 场景 ESM 模块 | JS 高亮 + HTTP 脚本引擎类型提示（`request` / `response` 等） |
+| `.djs`   | DNS `SCRIPT` 处理器或 DNS 场景 ESM 模块   | JS 高亮 + DNS 脚本引擎类型提示（`request` / `response`）     |
+| `.djson` | DNS `STATIC` 处理器的静态应答（JSON）     | JSON 高亮 + DNS 应答 Schema 校验                             |
 
 `.djson` 静态应答文件的结构如下：
 
@@ -119,13 +119,28 @@ xss-receiver-rs <config_file>
 - `ttl`：默认 60。
 - `answers[].type`：`A` / `AAAA` / `CNAME` / `TXT`。
 
-> 这些扩展名是面向编辑体验的约定，后端按 handler 配置读取对应文件并执行，HTTP `STATIC` 处理器则可指向任意类型的文件原样返回。
+> 这些扩展名是面向编辑体验的约定。模块运行时使用哪套 HTTP / DNS 全局 API 由入口路由决定，而不是由被导入文件的扩展名决定；管理后台仅提供当前文件的类型提示，不解析跨文件导出。HTTP `STATIC` 处理器可指向任意类型的文件原样返回。
 
 ## 脚本引擎 API
 
-`SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行。HTTP 与 DNS 脚本均支持顶层 `await`；使用 `export default value` 将结构化数据写入请求日志的 `extra_info`，未导出时写入 `null`。静态与动态 `import` 均不受支持，路由的 `timeout` 是包括异步操作在内的总执行时限。
+`SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行。HTTP 与 DNS 脚本均支持顶层 `await`、静态 `import` 和动态 `import()`；使用 `export default value` 将入口模块的结构化数据写入请求日志的 `extra_info`，未导出时写入 `null`。路由的 `timeout` 是包括异步操作在内的总执行时限。
 
 脚本中均可使用 `request`、`response`、`storage`、`cache`、`http` 与全局工具函数；`request` / `response` 因场景不同而结构不同。
+
+### 模块加载
+
+脚本可以导入 user storage 中的其他 ESM 文件：
+
+```js
+import { normalize } from './lib/normalize.hjs'
+const shared = await import('shared/utils.js')
+```
+
+- `./` 和 `../` 相对当前模块解析；不以 `./` / `../` 开头的路径相对 user storage 根目录解析。路径规范化后不得越过 storage 根目录。
+- 路径必须包含准确文件名，不自动补 `.js`，也不自动解析 `index.js`。
+- 加载器不限制扩展名，所有依赖都按 UTF-8 ESM JavaScript 解析；不支持 CommonJS `require`、JSON 模块、npm / Node 模块或 URL 导入。
+- 所有依赖共享入口模块的 Context。HTTP 路由加载的依赖获得 HTTP 版 `request` / `response`，DNS 路由加载的依赖获得 DNS 版对象，即使文件扩展名不同也不会切换 Context。
+- 同一路径在单次请求中只加载和执行一次；每个新请求都会创建新 Context 并重新读取入口及依赖文件。只有入口模块的 `export default` 会写入日志。
 
 ### `request`（HTTP）
 
@@ -179,14 +194,14 @@ xss-receiver-rs <config_file>
 `http` 是服务端出站 HTTP 客户端，提供 `request`、`get`、`post`、`put`、`patch`、`delete`、`head` 方法，并返回 Promise：
 
 ```js
-const upstream = await http.post("https://example.com/api", {
-  headers: { "content-type": "application/json" },
+const upstream = await http.post('https://example.com/api', {
+  headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ source: request.clientAddr }),
   timeout: 5000,
-});
+})
 
-const data = upstream.json();
-export default { status: upstream.statusCode, data };
+const data = upstream.json()
+export default { status: upstream.statusCode, data }
 ```
 
 请求选项包括 `method`、`headers`、`body`（字符串或 `Uint8Array`）、`timeout`、`maxResponseSize`、`maxRedirects` 与 `tlsVerify`。响应包含 `statusCode`、最终 `url`、多值 `headers`、`body`，以及可重复调用的 `text()` / `json()`。4xx/5xx 会正常返回；网络错误、超时、无效 JSON 或超过响应体上限时抛出异常。请求级限制只能收紧服务端配置；`tlsVerify` 默认为 `true`，请仅在确有需要时关闭。
@@ -201,7 +216,7 @@ export default { status: upstream.statusCode, data };
 
 `skills/xss-receiver/` 提供了一份面向 AI 编程助手的技能（Agent Skill），让 AI 在**看不到本仓库源码**的情况下也能使用本平台的能力：
 
-- 编写脚本引擎处理器：`.hjs`（HTTP）/ `.djs`（DNS）脚本与 `.djson` 静态应答。
+- 编写脚本引擎处理器与模块：`.hjs`（HTTP）/ `.djs`（DNS）脚本、可复用 ESM 模块与 `.djson` 静态应答。
 - 通过后台 HTTP API 操作平台：上传脚本、创建 / 管理路由、拉取收到的请求日志。
 
 包含的文件：
