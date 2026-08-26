@@ -5,7 +5,7 @@ storage_path = "/tmp/"
 listen = "0.0.0.0:8000"
 openapi = true
 jwt_secret = "TEST_VALUE"          # empty means random value
-jwt_expire_time = 259200           # 3 days
+jwt_expire_time = 604800           # 7 days
 real_addr_header = ""
 admin_prefix = "/super_admin/"
 max_body_size = 3145728            # 3MB
@@ -21,7 +21,7 @@ max_ttl = 3600
 [script.http]
 allow_private_network = false
 timeout = 16000
-max_response_size = 8388608
+max_response_size = 3145728
 max_redirects = 8
 
 [ip2region]

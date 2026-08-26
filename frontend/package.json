@@ -16,6 +16,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@mdi/font": "^7.4.47",
     "@vscode/vscode-languagedetection": "^1.0.23",
+    "@vueuse/core": "^14.4.0",
     "axios": "^1.13.5",
     "iconv-lite": "^0.7.2",
     "monaco-editor": "^0.55.1",

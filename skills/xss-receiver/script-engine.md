@@ -279,7 +279,7 @@ const upstream = await http.post('https://example.com/events', {
     'x-source': 'xss-receiver',
   },
   body: JSON.stringify({ client: request.clientAddr }),
-  timeout: 5000,
+  timeout: 8000,
   maxResponseSize: 1024 * 1024,
 })
 

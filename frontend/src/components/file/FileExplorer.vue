@@ -26,6 +26,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { listDir } from '@/api/file'
 import type { Entry } from '@/types/file'
 import TreeNodeView from './TreeNodeView.vue'
@@ -50,25 +51,28 @@ const emit = defineEmits<{
 // Stores the set of directory paths (relative) that are currently expanded,
 // so the tree state survives a full page refresh.
 const STORAGE_KEY = 'file-explorer-expanded'
-const expandedPaths = new Set<string>(loadExpandedPaths())
+const expandedPaths = useStorage<string[]>(STORAGE_KEY, [''], undefined, {
+  listenToStorageChanges: false,
+  onError: () => {},
+})
 
-function loadExpandedPaths(): string[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return ['']
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === 'string') : ['']
-  } catch {
-    return ['']
+function normalizeExpandedPaths(value: unknown): string[] {
+  if (!Array.isArray(value)) return ['']
+  const paths = value.filter((path): path is string => typeof path === 'string')
+  if (!paths.includes('')) paths.unshift('')
+  return [...new Set(paths)]
+}
+
+expandedPaths.value = normalizeExpandedPaths(expandedPaths.value)
+
+function addExpandedPath(path: string) {
+  if (!expandedPaths.value.includes(path)) {
+    expandedPaths.value = [...expandedPaths.value, path]
   }
 }
 
-function persistExpandedPaths() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...expandedPaths]))
-  } catch {
-    // ignore quota errors
-  }
+function removeExpandedPath(path: string) {
+  expandedPaths.value = expandedPaths.value.filter((expandedPath) => expandedPath !== path)
 }
 
 const rootNode = ref<TreeNode>({
@@ -119,13 +123,13 @@ async function loadChildren(node: TreeNode) {
         loaded: false,
         expanded: false,
       }
-      if (e.kind === 'directory' && expandedPaths.has(childPath)) {
+      if (e.kind === 'directory' && expandedPaths.value.includes(childPath)) {
         child.expanded = true
         try {
           await loadChildren(child)
         } catch {
           // stale path in storage — drop it and leave the child collapsed
-          expandedPaths.delete(childPath)
+          removeExpandedPath(childPath)
           child.expanded = false
         }
       }
@@ -142,17 +146,15 @@ async function toggleNode(node: TreeNode) {
     await loadChildren(node)
   }
   node.expanded = !node.expanded
-  if (node.expanded) expandedPaths.add(node.path)
-  else expandedPaths.delete(node.path)
-  persistExpandedPaths()
+  if (node.expanded) addExpandedPath(node.path)
+  else removeExpandedPath(node.path)
 }
 
 async function refreshNode(node: TreeNode) {
   if (node.kind !== 'directory') return
   await loadChildren(node)
   node.expanded = true
-  expandedPaths.add(node.path)
-  persistExpandedPaths()
+  addExpandedPath(node.path)
 }
 
 // Recursively collapse every directory in the tree.
@@ -168,9 +170,7 @@ function collapseAll() {
     }
   }
   walk(rootNode.value)
-  expandedPaths.clear()
-  expandedPaths.add('')
-  persistExpandedPaths()
+  expandedPaths.value = ['']
 }
 
 function onContextMenu(payload: { node: TreeNode; x: number; y: number }) {
@@ -198,7 +198,6 @@ function findParent(path: string): TreeNode | undefined {
 
 onMounted(async () => {
   await loadChildren(rootNode.value)
-  persistExpandedPaths()
 })
 
 defineExpose({

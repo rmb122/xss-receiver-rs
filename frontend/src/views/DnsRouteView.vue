@@ -193,11 +193,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { getAllDnsRoutes, createDnsRoute, updateDnsRoute, deleteDnsRoute } from '@/api/dnsRoute'
-import { listAll, getFileBytes, FileTooLargeError, chunkedUpload } from '@/api/file'
-import { showSuccessToast, showErrorToast } from '@/utils/toast'
-import { formatFileSize, formatTime } from '@/utils/format'
+import { listAll } from '@/api/file'
+import { showSuccessToast } from '@/utils/toast'
+import { formatTime } from '@/utils/format'
 import { expandAllGroups } from '@/utils/table'
+import { useHandlerFileEditor } from '@/composables/useHandlerFileEditor'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import FileEditorDialog from '@/components/file/FileEditorDialog.vue'
 import type { DnsRoute, HandlerKind, PatternKind } from '@/types/dnsRoute'
@@ -218,7 +220,9 @@ const editingId = ref<number | null>(null)
 const handlerOptions = ref<string[]>([])
 const handlerLoading = ref(false)
 const confirmDialog = ref<InstanceType<typeof ConfirmDialog>>()
-const groupByEnabled = ref(true)
+const groupByEnabled = useStorage(ROUTE_GROUP_BY_KEY, true, undefined, {
+  listenToStorageChanges: false,
+})
 const groupHeaders = ref<
   {
     item: Group<any>
@@ -227,10 +231,14 @@ const groupHeaders = ref<
   }[]
 >([])
 
-// Handler 文件编辑器相关状态
-const handlerEditorDialog = ref(false)
-const editingHandlerFile = ref({ name: '', bytes: new Uint8Array(0), path: '' })
-const savingHandler = ref(false)
+const {
+  handlerEditorDialog,
+  editingHandlerFile,
+  savingHandler,
+  openHandlerEditor,
+  handleSaveHandlerFile,
+  handleSaveHandlerFileAndClose,
+} = useHandlerFileEditor()
 
 // 计算 headers，在分组模式下隐藏 catalog 列
 const computedHeaders = computed(() => {
@@ -269,7 +277,7 @@ const form = ref({
   pattern_kind: 'PLAIN' as PatternKind,
   pattern: '',
   priority: 0,
-  timeout: 5000,
+  timeout: 8000,
   catalog: '',
   handler_kind: 'STATIC' as HandlerKind,
   handler: '',
@@ -282,7 +290,7 @@ function resetForm() {
     pattern_kind: 'PLAIN',
     pattern: '',
     priority: 0,
-    timeout: 5000,
+    timeout: 8000,
     catalog: '',
     handler_kind: 'STATIC',
     handler: '',
@@ -381,76 +389,15 @@ async function handleDelete(route: DnsRoute) {
   fetchRoutes()
 }
 
-// 打开 Handler 文件编辑器
-async function openHandlerEditor(route: DnsRoute) {
-  if (!route.handler) {
-    showErrorToast('handler 路径为空')
-    return
-  }
-  const filename = route.handler.split('/').pop() || route.handler
-  let bytes: Uint8Array<ArrayBuffer>
-  try {
-    bytes = await getFileBytes(route.handler)
-  } catch (err) {
-    if (err instanceof FileTooLargeError) {
-      showErrorToast(`文件过大 (${formatFileSize(err.size)}), 无法在线编辑, 请下载后查看`)
-      return
-    }
-    throw err
-  }
-
-  editingHandlerFile.value = {
-    name: filename,
-    bytes: bytes,
-    path: route.handler,
-  }
-  handlerEditorDialog.value = true
-}
-
-// 保存 Handler 文件
-async function handleSaveHandlerFile(bytes: Uint8Array<ArrayBuffer>) {
-  try {
-    savingHandler.value = true
-    await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
-    editingHandlerFile.value.bytes = bytes
-    showSuccessToast('保存成功')
-  } finally {
-    savingHandler.value = false
-  }
-}
-
-// 保存 Handler 文件并关闭编辑器
-async function handleSaveHandlerFileAndClose(bytes: Uint8Array<ArrayBuffer>) {
-  try {
-    savingHandler.value = true
-    await chunkedUpload(editingHandlerFile.value.path, new Blob([bytes]))
-    editingHandlerFile.value.bytes = bytes
-    showSuccessToast('保存成功')
-    handlerEditorDialog.value = false
-  } finally {
-    savingHandler.value = false
-  }
-}
-
 // 切换分组显示
 function toggleGroupBy() {
   groupByEnabled.value = !groupByEnabled.value
-  localStorage.setItem(ROUTE_GROUP_BY_KEY, JSON.stringify(groupByEnabled.value))
   nextTick(() => {
     expandAllGroups(groupHeaders)
   })
 }
 
-// 加载分组显示设置
-function loadGroupBySetting() {
-  const saved = localStorage.getItem(ROUTE_GROUP_BY_KEY)
-  if (saved !== null) {
-    groupByEnabled.value = JSON.parse(saved)
-  }
-}
-
 onMounted(async () => {
-  loadGroupBySetting()
   await fetchRoutes()
 })
 </script>

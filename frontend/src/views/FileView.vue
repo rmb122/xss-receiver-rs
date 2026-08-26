@@ -59,6 +59,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeUnmount } from 'vue'
+import { useStorage } from '@vueuse/core'
 import FileExplorer, { type TreeNode } from '@/components/file/FileExplorer.vue'
 import FileContextMenu, {
   type ContextMenuAction,
@@ -91,10 +92,15 @@ const layoutEl = ref<HTMLElement | null>(null)
 const EXPLORER_MIN = 160
 const EXPLORER_MAX_PADDING = 200 // keep at least this many px for the editor pane
 const STORAGE_KEY = 'file-view-explorer-width'
-const initialWidth = Number(localStorage.getItem(STORAGE_KEY))
-const explorerWidth = ref<number>(
-  Number.isFinite(initialWidth) && initialWidth >= EXPLORER_MIN ? initialWidth : 280,
-)
+const storedExplorerWidth = useStorage(STORAGE_KEY, 280, undefined, {
+  listenToStorageChanges: false,
+})
+const initialExplorerWidth =
+  Number.isFinite(storedExplorerWidth.value) && storedExplorerWidth.value >= EXPLORER_MIN
+    ? storedExplorerWidth.value
+    : 280
+storedExplorerWidth.value = initialExplorerWidth
+const explorerWidth = ref(initialExplorerWidth)
 const isDragging = ref(false)
 let dragStartX = 0
 let dragStartWidth = 0
@@ -119,7 +125,7 @@ function onSplitterMouseMove(e: MouseEvent) {
 function onSplitterMouseUp() {
   if (!isDragging.value) return
   isDragging.value = false
-  localStorage.setItem(STORAGE_KEY, String(explorerWidth.value))
+  storedExplorerWidth.value = explorerWidth.value
   document.removeEventListener('mousemove', onSplitterMouseMove)
   document.removeEventListener('mouseup', onSplitterMouseUp)
 }

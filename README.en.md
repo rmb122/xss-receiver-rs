@@ -197,7 +197,7 @@ const shared = await import('shared/utils.js')
 const upstream = await http.post('https://example.com/api', {
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ source: request.clientAddr }),
-  timeout: 5000,
+  timeout: 8000,
 })
 
 const data = upstream.json()

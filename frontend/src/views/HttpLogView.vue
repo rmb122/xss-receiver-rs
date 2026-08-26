@@ -206,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { UAParser } from 'ua-parser-js'
 import { getHttpLogRawBody, downloadHttpLogRawBody, getHttpLogs } from '@/api/httpLog'
 import { getDownloadLogFileUrl } from '@/api/file'
@@ -217,10 +217,7 @@ import { decodeBytes } from '@/utils/encoding'
 import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
-import {
-  requestBrowserNotificationPermission,
-  sendBrowserNotification,
-} from '@/utils/browserNotification'
+import { useLogTable } from '@/composables/useLogTable'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -280,75 +277,30 @@ const headers: DataTableHeader[] = [
   { title: '数据摘要', key: 'summary', sortable: false },
 ]
 
-const logs = ref<HttpLog[]>([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
-const loading = ref(false)
-const expanded = ref<readonly string[]>([])
+const {
+  logs,
+  total,
+  page,
+  pageSize,
+  loading,
+  expanded,
+  autoRefresh,
+  fetchLogs,
+  onOptionsUpdate,
+  handleRowClick,
+  toggleAutoRefresh,
+} = useLogTable<HttpLog>({
+  fetchPage: getHttpLogs,
+  notificationBody: '收到新 HTTP 请求',
+  notificationTag: 'http-log-notification',
+})
+
 const rawBodyDialog = ref(false)
 const rawBodyContent = ref<Uint8Array<ArrayBuffer>>(new Uint8Array(0))
 const rawBodyEncoding = ref('UTF-8')
 const rawBodyText = computed(() => decodeBytes(rawBodyContent.value, rawBodyEncoding.value))
 const rawBodyLanguage = ref('plaintext')
 const rawBodyFilename = ref('raw-body.txt')
-
-// 刷新功能状态
-const autoRefresh = ref<boolean>(true)
-const refreshTimer = ref<ReturnType<typeof setInterval> | undefined>(undefined)
-
-// 通知功能状态
-const lastMaxLog = ref<[number, number]>([-1, -1]) // [页数, 上一次的最大日志 ID]
-
-async function fetchLogs(isAutoRefresh = false) {
-  loading.value = true
-  try {
-    const payload = await getHttpLogs({ page: page.value, page_size: pageSize.value })
-    if (payload) {
-      logs.value = payload.data
-      total.value = payload.total
-
-      const currentMaxId = Math.max(...payload.data.map((log) => log.id))
-
-      // 检测是否有新请求（仅在自动刷新时触发通知）
-      if (isAutoRefresh && payload.data.length > 0) {
-        // 如果有新的日志 ID，发送通知
-        // 页数相同, 且 id 更大
-        if (lastMaxLog.value[0] == page.value && currentMaxId > lastMaxLog.value[1]) {
-          sendBrowserNotification({
-            body: '收到新 HTTP 请求',
-            tag: 'http-log-notification',
-          })
-        }
-      }
-
-      // 更新最大日志 ID
-      lastMaxLog.value = [page.value, currentMaxId]
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-function handleRowClick(_event: MouseEvent, item: { item: HttpLog }) {
-  // vuetify expanded 强制用 string 作为 expanded key, 所以上面用 item-value 将 number 转换成了 string
-  // 这里同理
-  const logId = item.item.id.toString()
-
-  // 如果点击的行已经展开，则收起
-  if (expanded.value.length > 0 && expanded.value[0] === logId) {
-    expanded.value = []
-  } else {
-    // 否则，收起之前的行，展开当前行
-    expanded.value = [logId]
-  }
-}
-
-function onOptionsUpdate(options: any) {
-  page.value = options.page
-  pageSize.value = options.itemsPerPage
-  fetchLogs()
-}
 
 function getUserAgent(log: HttpLog): string {
   const ua = log.header?.['User-Agent']
@@ -496,53 +448,6 @@ async function openRawBody(log: HttpLog) {
 function downloadRawBody(log: HttpLog) {
   downloadHttpLogRawBody(log.id)
 }
-
-// 启动自动刷新
-function startAutoRefresh() {
-  // 清除已存在的定时器（防止重复）
-  if (refreshTimer.value) {
-    clearInterval(refreshTimer.value)
-  }
-
-  // 启动新的定时器（每 3 秒刷新一次）
-  refreshTimer.value = setInterval(() => {
-    fetchLogs(true) // 传递 true 表示这是自动刷新
-  }, 3000)
-}
-
-// 停止自动刷新
-function stopAutoRefresh() {
-  if (refreshTimer.value) {
-    clearInterval(refreshTimer.value)
-    refreshTimer.value = undefined
-  }
-}
-
-// 切换自动刷新
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value
-
-  if (autoRefresh.value) {
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
-// 组件挂载时，如果自动刷新是开启的，则启动定时器
-onMounted(async () => {
-  // 请求通知权限
-  await requestBrowserNotificationPermission()
-
-  if (autoRefresh.value) {
-    startAutoRefresh()
-  }
-})
-
-// 组件卸载时，清除定时器（防止内存泄漏）
-onUnmounted(() => {
-  stopAutoRefresh()
-})
 </script>
 
 <style scoped>

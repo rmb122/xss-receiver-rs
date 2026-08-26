@@ -86,17 +86,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
 import type { DataTableHeader } from 'vuetify'
 import { getDnsLogs } from '@/api/dnsLog'
 import type { DnsLog } from '@/types/dnsLog'
 import JsonHighlight from '@/components/JsonHighlight.vue'
 import { formatTime } from '@/utils/format'
-import { showSuccessToast } from '@/utils/toast'
-import {
-  requestBrowserNotificationPermission,
-  sendBrowserNotification,
-} from '@/utils/browserNotification'
+import { useLogTable } from '@/composables/useLogTable'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -131,86 +126,22 @@ const headers: DataTableHeader[] = [
   { title: '域名', key: 'query_name', sortable: false },
 ]
 
-const logs = ref<DnsLog[]>([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = ref(20)
-const loading = ref(false)
-const expanded = ref<readonly string[]>([])
-const autoRefresh = ref(true)
-const refreshTimer = ref<ReturnType<typeof setInterval> | undefined>(undefined)
-const lastMaxLog = ref<[number, number]>([-1, -1])
-
-async function fetchLogs(isAutoRefresh = false) {
-  loading.value = true
-  try {
-    const payload = await getDnsLogs({ page: page.value, page_size: pageSize.value })
-    if (payload) {
-      logs.value = payload.data
-      total.value = payload.total
-
-      const currentMaxId =
-        payload.data.length > 0 ? Math.max(...payload.data.map((log) => log.id)) : -1
-      if (
-        isAutoRefresh &&
-        payload.data.length > 0 &&
-        lastMaxLog.value[0] === page.value &&
-        currentMaxId > lastMaxLog.value[1]
-      ) {
-        sendBrowserNotification({
-          body: '收到新的 DNS 查询',
-          tag: 'dns-log-notification',
-        })
-      }
-      lastMaxLog.value = [page.value, currentMaxId]
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-function handleRowClick(_event: MouseEvent, item: { item: DnsLog }) {
-  const logId = item.item.id.toString()
-  expanded.value = expanded.value.length > 0 && expanded.value[0] === logId ? [] : [logId]
-}
-
-function onOptionsUpdate(options: any) {
-  page.value = options.page
-  pageSize.value = options.itemsPerPage
-  fetchLogs()
-}
-
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value
-  if (autoRefresh.value) {
-    startAutoRefresh()
-  } else {
-    stopAutoRefresh()
-  }
-}
-
-function startAutoRefresh() {
-  stopAutoRefresh()
-  refreshTimer.value = setInterval(() => {
-    fetchLogs(true)
-  }, 5000)
-}
-
-function stopAutoRefresh() {
-  if (refreshTimer.value) {
-    clearInterval(refreshTimer.value)
-    refreshTimer.value = undefined
-  }
-}
-
-onMounted(async () => {
-  await requestBrowserNotificationPermission()
-  fetchLogs()
-  if (autoRefresh.value) startAutoRefresh()
-})
-
-onUnmounted(() => {
-  stopAutoRefresh()
+const {
+  logs,
+  total,
+  page,
+  pageSize,
+  loading,
+  expanded,
+  autoRefresh,
+  fetchLogs,
+  onOptionsUpdate,
+  handleRowClick,
+  toggleAutoRefresh,
+} = useLogTable<DnsLog>({
+  fetchPage: getDnsLogs,
+  notificationBody: '收到新的 DNS 查询',
+  notificationTag: 'dns-log-notification',
 })
 </script>
 
