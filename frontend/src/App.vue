@@ -1,8 +1,8 @@
 <template>
   <v-app>
     <AppNavbar v-if="showNavbar" />
-    <MessageToast />
     <v-main>
+      <MessageToast />
       <router-view />
     </v-main>
   </v-app>
