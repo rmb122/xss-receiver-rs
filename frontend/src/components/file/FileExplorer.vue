@@ -221,8 +221,38 @@ defineExpose({
   min-height: 32px;
 }
 .explorer-body {
+  --explorer-scrollbar-thumb: rgba(100, 100, 100, 0.4);
+  --explorer-scrollbar-thumb-hover: rgba(100, 100, 100, 0.7);
+  --explorer-scrollbar-thumb-active: rgba(0, 0, 0, 0.6);
+
   flex: 1;
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 4px 0;
+  scrollbar-color: var(--explorer-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+.explorer-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.explorer-body::-webkit-scrollbar-track,
+.explorer-body::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+.explorer-body::-webkit-scrollbar-thumb {
+  background-color: var(--explorer-scrollbar-thumb);
+}
+.explorer-body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--explorer-scrollbar-thumb-hover);
+}
+.explorer-body::-webkit-scrollbar-thumb:active {
+  background-color: var(--explorer-scrollbar-thumb-active);
+}
+.explorer-body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 </style>
