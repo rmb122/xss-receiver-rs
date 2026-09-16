@@ -125,6 +125,8 @@ xss-receiver-rs <config_file>
 
 `SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行。HTTP 与 DNS 脚本均支持顶层 `await`、静态 `import` 和动态 `import()`；使用 `export default value` 将入口模块的结构化数据写入请求日志的 `extra_info`，未导出时写入 `null`。路由的 `timeout` 是包括异步操作在内的总执行时限。
 
+默认导出按 `JSON.stringify` 规则序列化，支持直接导出 `request.headers` 或将其嵌套在对象、数组中。不可序列化的顶层值（如 `undefined`）写入 `null`；循环引用和 `BigInt` 会报错。
+
 脚本中均可使用 `request`、`response`、`storage`、`cache`、`http` 与全局工具函数；`request` / `response` 因场景不同而结构不同。
 
 ### 模块加载
@@ -150,11 +152,19 @@ const shared = await import('shared/utils.js')
 | `request.path`       | 请求路径                                                 |
 | `request.clientAddr` | 客户端地址                                               |
 | `request.body`       | 原始请求体（`Uint8Array`）                               |
-| `request.headers`    | 请求头，支持 `headers.get(key)`                          |
+| `request.headers`    | 请求头，`get(key)`、方括号和点号访问均忽略头名称大小写   |
 | `request.query`      | 查询参数，支持 `query.get(key)`                          |
 | `request.json`       | 解析后的 JSON body                                       |
 | `request.forms`      | 表单字段，支持 `forms.get(key)`                          |
 | `request.files`      | 上传文件，`files.get(name)` 返回 `{ filename, content }` |
+
+`request.headers.get('HOST')` 与 `request.headers.get('host')` 返回相同的首个值；
+`request.headers.Host`、`request.headers['HOST']` 与 `request.headers.host` 返回同一个多值数组。
+头名称按 ASCII 规则忽略大小写，遍历时仍使用规范化名称（如 `Host`、`User-Agent`），缺失的头返回 `undefined`。
+`.get` 保留为方法，名为 `get` 的请求头通过 `.get('get')` 读取。query、form 和文件字段名仍区分大小写。
+
+`request` 对象、headers/query/forms/files 映射及其值数组、嵌套 JSON 和上传文件描述对象均只读，不能新增、修改、删除属性或修改数组元素。ES 模块中这些写操作会抛出 `TypeError`；需要修改时先复制，例如 `const headers = { ...request.headers }`、`const values = [...request.headers.host]`。
+`request.body` 和上传文件的 `content` 属性不能重新赋值，其 `Uint8Array` 缓冲区内容仍可正常修改。
 
 ### `response`（HTTP）
 

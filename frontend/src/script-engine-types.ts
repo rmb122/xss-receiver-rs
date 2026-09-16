@@ -103,28 +103,35 @@ export const httpScriptEngineTypes = `
 ${commonScriptEngineTypes}
 
 interface MultiMap {
-  get(key: string): string | undefined;
-  [key: string]: string[] | ((key: string) => string | undefined);
+  readonly get: (key: string) => string | undefined;
+  readonly [key: string]: readonly string[] | ((key: string) => string | undefined);
 }
+
+type ReadonlyJsonValue = null | boolean | number | string
+  | readonly ReadonlyJsonValue[]
+  | { readonly [key: string]: ReadonlyJsonValue };
 
 interface UploadFile {
   readonly filename: string;
+  /** The content property is fixed; the Uint8Array bytes remain writable. */
   readonly content: Uint8Array;
 }
 
 interface UploadFilesMap {
-  get(name: string): UploadFile | undefined;
-  [name: string]: UploadFile[] | ((name: string) => UploadFile | undefined);
+  readonly get: (name: string) => UploadFile | undefined;
+  readonly [name: string]: readonly UploadFile[] | ((name: string) => UploadFile | undefined);
 }
 
 interface HttpRequest {
   readonly method: string;
   readonly path: string;
   readonly clientAddr: string;
+  /** The body property is fixed; the Uint8Array bytes remain writable. */
   readonly body: Uint8Array;
+  /** Read-only header map and value arrays. ASCII case-insensitive lookup via get(key), bracket, or dot access. The exact property "get" is reserved for the method; use get('get') for that header. */
   readonly headers: MultiMap;
   readonly query: MultiMap;
-  readonly json: any;
+  readonly json: ReadonlyJsonValue;
   readonly forms: MultiMap;
   readonly files: UploadFilesMap;
 }

@@ -125,6 +125,8 @@ A `.djson` static answer file has the following structure:
 
 `SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`, static `import`, and dynamic `import()`. Use `export default value` in the entry module to write structured data to the request log's `extra_info`; omitting it stores `null`. The route's `timeout` is the overall execution limit, including asynchronous work.
 
+Default exports follow `JSON.stringify` rules, including when `request.headers` is exported directly or nested in objects and arrays. Top-level values such as `undefined` that produce no JSON store `null`; cycles and `BigInt` cause serialization errors.
+
 The `request`, `response`, `storage`, `cache`, `http`, and global helper functions are available to scripts; `request` / `response` differ in shape per scenario.
 
 ### Module loading
@@ -144,17 +146,25 @@ const shared = await import('shared/utils.js')
 
 ### `request` (HTTP)
 
-| Property / Method    | Description                                                       |
-| -------------------- | ----------------------------------------------------------------- |
-| `request.method`     | request method                                                    |
-| `request.path`       | request path                                                      |
-| `request.clientAddr` | client address                                                    |
-| `request.body`       | raw request body (`Uint8Array`)                                   |
-| `request.headers`    | request headers, supports `headers.get(key)`                      |
-| `request.query`      | query parameters, supports `query.get(key)`                       |
-| `request.json`       | parsed JSON body                                                  |
-| `request.forms`      | form fields, supports `forms.get(key)`                            |
-| `request.files`      | uploaded files; `files.get(name)` returns `{ filename, content }` |
+| Property / Method    | Description                                                                  |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `request.method`     | request method                                                               |
+| `request.path`       | request path                                                                 |
+| `request.clientAddr` | client address                                                               |
+| `request.body`       | raw request body (`Uint8Array`)                                              |
+| `request.headers`    | request headers; `get(key)`, bracket, and dot access ignore header-name case |
+| `request.query`      | query parameters, supports `query.get(key)`                                  |
+| `request.json`       | parsed JSON body                                                             |
+| `request.forms`      | form fields, supports `forms.get(key)`                                       |
+| `request.files`      | uploaded files; `files.get(name)` returns `{ filename, content }`            |
+
+`request.headers.get('HOST')` and `request.headers.get('host')` return the same first value;
+`request.headers.Host`, `request.headers['HOST']`, and `request.headers.host` return the same array of values.
+Header-name lookup ignores ASCII case. Enumeration keeps normalized names such as `Host` and `User-Agent`, and missing headers return `undefined`.
+The exact property `.get` is reserved for the method; read a header named `get` with `.get('get')`. Query, form, and file field names remain case-sensitive.
+
+The `request` object, headers/query/forms/files maps and their value arrays, nested JSON, and uploaded file descriptors are read-only. Adding, replacing, or deleting properties and modifying array elements throws `TypeError` in ES modules. Copy data before editing it, for example `const headers = { ...request.headers }` or `const values = [...request.headers.host]`.
+The `request.body` and uploaded file `content` properties cannot be reassigned; their `Uint8Array` bytes remain writable.
 
 ### `response` (HTTP)
 

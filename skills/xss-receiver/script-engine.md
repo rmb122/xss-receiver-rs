@@ -145,33 +145,55 @@ urlDecode(data: string): string
 ### `request`
 
 ```ts
-// MultiMap: one key may map to multiple values.
-//   request.headers["x-foo"]      -> string[]   (all values)
+// MultiMap: one key may map to multiple values. Header lookup ignores ASCII case;
+// query, form, and file field names remain case-sensitive.
+//   request.headers["x-foo"]      -> readonly string[]   (all values)
 //   request.headers.get("x-foo")  -> string | undefined  (first value)
 interface MultiMap {
-  get(key: string): string | undefined
-  [key: string]: string[] | ((key: string) => string | undefined)
+  readonly get: (key: string) => string | undefined
+  readonly [key: string]: readonly string[] | ((key: string) => string | undefined)
 }
+
+type ReadonlyJsonValue = null | boolean | number | string
+  | readonly ReadonlyJsonValue[]
+  | { readonly [key: string]: ReadonlyJsonValue }
 
 interface UploadFile {
   readonly filename: string
   readonly content: Uint8Array
 }
 interface UploadFilesMap {
-  get(name: string): UploadFile | undefined
-  [name: string]: UploadFile[] | ((name: string) => UploadFile | undefined)
+  readonly get: (name: string) => UploadFile | undefined
+  readonly [name: string]: readonly UploadFile[] | ((name: string) => UploadFile | undefined)
 }
 
 request.method: string        // request method
 request.path: string          // request path
 request.clientAddr: string    // client address (ip:port)
 request.body: Uint8Array      // raw request body
-request.headers: MultiMap     // request headers; headers.get(key) for first value
+request.headers: MultiMap     // case-insensitive header lookup; headers.get(key) for first value
 request.query: MultiMap       // query params; query.get(key)
-request.json: any             // parsed object when the body is JSON (otherwise an empty object)
+request.json: ReadonlyJsonValue // parsed JSON value (otherwise an empty object)
 request.forms: MultiMap       // form fields (multipart / urlencoded); forms.get(key)
 request.files: UploadFilesMap // uploaded files; files.get(name) -> { filename, content }
 ```
+
+Header lookup supports mixed case with either access style:
+
+```js
+request.headers.get('HOST') === request.headers.get('host') // same first value
+request.headers.Host === request.headers['HOST'] // same array of values
+request.headers.host === request.headers.Host
+```
+
+Enumeration keeps normalized names such as `Host` and `User-Agent`, and missing headers return `undefined`.
+The exact property `.get` is reserved for the method; read a header named `get` with `.get('get')`.
+
+`request`, its maps and value arrays, nested JSON, and uploaded file descriptors are frozen.
+Adding, replacing, or deleting properties and modifying array elements throws `TypeError` in ES modules.
+Use object or array copies when editing data, e.g. `{ ...request.headers }` or `[...request.headers.host]`.
+The `request.body` and uploaded file `content` properties cannot be reassigned, but their `Uint8Array` bytes remain writable.
+Default exports use `JSON.stringify` semantics, including when headers are nested in objects or arrays; cycles and `BigInt` cause serialization errors.
 
 ### `response`
 

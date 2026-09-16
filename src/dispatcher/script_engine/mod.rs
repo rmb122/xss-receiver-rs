@@ -15,7 +15,7 @@ use crate::utils::parsed_request::ParsedRequest;
 #[cfg(test)]
 use boa_engine::module::IdleModuleLoader;
 use boa_engine::{
-    Context, JsError, JsResult, JsValue, Module, Source,
+    Context, JsError, JsNativeError, JsResult, JsValue, Module, Source,
     builtins::promise::PromiseState,
     job::{JobExecutor, SimpleJobExecutor},
     module::SimpleModuleLoader,
@@ -55,6 +55,16 @@ async fn evaluate_parsed_module(
     context: &mut Context,
     executor: Rc<SimpleJobExecutor>,
 ) -> JsResult<serde_json::Value> {
+    // Capture the intrinsic before running user code. Unlike JsValue::to_json,
+    // JSON.stringify traverses proxies (including nested proxies) and respects
+    // enumerability. Scripts can replace the global JSON object or its methods.
+    let stringify = context
+        .intrinsics()
+        .objects()
+        .json()
+        .get(boa_engine::js_string!("stringify"), context)?
+        .as_callable()
+        .expect("intrinsic JSON.stringify must be callable");
     let promise = module.load_link_evaluate(context);
 
     executor.run_jobs_async(&RefCell::new(context)).await?;
@@ -69,10 +79,18 @@ async fn evaluate_parsed_module(
         }
     }
 
-    Ok(module
-        .get_value(boa_engine::js_string!("default"), context)?
-        .to_json(context)?
-        .unwrap_or(serde_json::Value::Null))
+    let value = module.get_value(boa_engine::js_string!("default"), context)?;
+    let serialized = stringify.call(&JsValue::undefined(), &[value], context)?;
+    let Some(serialized) = serialized.as_string() else {
+        return Ok(serde_json::Value::Null);
+    };
+    serde_json::from_str(&serialized.to_std_string_lossy()).map_err(|error| {
+        JsNativeError::error()
+            .with_message(format!(
+                "could not serialize module default export: {error}"
+            ))
+            .into()
+    })
 }
 
 #[cfg(test)]
@@ -243,6 +261,49 @@ mod tests {
     fn missing_default_export_returns_null() {
         let value = run_module("await Promise.resolve();").unwrap();
         assert_eq!(value, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn default_export_serializes_nested_object_and_array_proxies() {
+        let value = run_module(
+            r#"
+                const item = new Proxy({ value: 42 }, {});
+                const items = new Proxy([item, item], {});
+                export default { items, item };
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            value,
+            json!({ "items": [{ "value": 42 }, { "value": 42 }], "item": { "value": 42 } })
+        );
+    }
+
+    #[test]
+    fn default_export_uses_original_json_serializer_and_standard_json_rules() {
+        let value = run_module(
+            r#"
+                JSON.stringify = () => '"replaced"';
+                globalThis.JSON = null;
+                const result = { value: 42, omitted: undefined, method() {} };
+                result.values = [undefined, NaN, Infinity];
+                Object.defineProperty(result, 'hidden', { value: 'hidden' });
+                export default result;
+            "#,
+        )
+        .unwrap();
+        assert_eq!(value, json!({ "value": 42, "values": [null, null, null] }));
+    }
+
+    #[test]
+    fn default_export_rejects_cycles_bigints_and_revoked_proxies() {
+        for source in [
+            "const x = {}; x.self = x; export default x;",
+            "export default { value: 1n };",
+            "const { proxy, revoke } = Proxy.revocable({}, {}); revoke(); export default proxy;",
+        ] {
+            assert!(run_module(source).is_err());
+        }
     }
 
     #[test]

@@ -15,6 +15,22 @@ pub type KeyValues = MultiMap<String, String>;
 pub type UploadFile = MultiMap<String, (String, Vec<u8>)>;
 pub type PersistedUploadFile = MultiMap<String, (String, String)>;
 
+/// Normalize header names using ASCII case folding, e.g. `cONTENT-tYPE` -> `Content-Type`.
+pub fn normalize_header_name(name: &str) -> String {
+    let mut uppercase = true;
+    name.chars()
+        .map(|c| {
+            let normalized = if uppercase {
+                c.to_ascii_uppercase()
+            } else {
+                c.to_ascii_lowercase()
+            };
+            uppercase = c == '-';
+            normalized
+        })
+        .collect()
+}
+
 #[derive(Debug)]
 pub enum ParsedRequestBody {
     None,
@@ -65,7 +81,7 @@ impl ParsedRequest {
                 .headers()
                 .iter()
                 .fold(KeyValues::new(), |mut headers, kv| {
-                    let key = Self::unify_header_key(kv.0.to_string());
+                    let key = normalize_header_name(kv.0.as_str());
                     let value = String::from_utf8_lossy(kv.1.as_bytes()).to_string();
                     headers.insert(key, value);
                     headers
@@ -97,26 +113,6 @@ impl ParsedRequest {
             .unwrap_or(ParsedRequestBody::Failed);
 
         Ok(parsed_request)
-    }
-
-    fn unify_header_key(key: String) -> String {
-        let mut upper_case = true;
-        let mut key_bytes = key.into_bytes();
-        key_bytes.iter_mut().for_each(|x| {
-            if upper_case {
-                upper_case = false;
-
-                *x = x.to_ascii_uppercase()
-            }
-
-            if *x == b'-' {
-                upper_case = true;
-            }
-        });
-
-        // SAFETY: key_bytes came from a valid UTF-8 String, and the loop only changes ASCII
-        // bytes to other ASCII bytes. Non-ASCII bytes are left unchanged by to_ascii_uppercase.
-        unsafe { String::from_utf8_unchecked(key_bytes) }
     }
 
     fn parse_content_type(content_type: &str) -> (String, HashMap<String, String>) {
