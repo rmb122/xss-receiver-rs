@@ -37,30 +37,26 @@ impl Locator {
     }
 
     fn format_location(location: String) -> String {
-        // 中国|福建省|福州市|中国电信|CN
-        // -> 中国福建省福州市中国电信
-
-        // US|X|X|X
-        // -> US X X X
-        // 同时取消占位的 "0"
-        let parts: Vec<_> = location.split("|").filter(|x| *x != "0").collect();
-
-        if parts.is_empty() {
-            return location;
-        }
-
-        if parts[0] == "Reserved" {
+        // 国家|省份|城市|ISP|国家代码
+        let mut parts: Vec<_> = location.split('|').collect();
+        if parts.first() == Some(&"Reserved") {
             return "局域网".to_owned();
         }
 
-        // 去掉最后的 |CN
-        let all_ascii = parts.iter().all(|x| x.is_ascii());
-
-        if all_ascii {
-            return parts[..parts.len() - 1].join(" ");
-        } else {
-            return parts[..parts.len() - 1].join("");
+        // 先移除国家代码，避免代码为占位值时误删最后一个有效字段。
+        parts.pop();
+        // 直辖市等同名省市只显示一次，国家和 ISP 不参与去重。
+        if parts.len() >= 3 && parts[1] == parts[2] {
+            parts.remove(2);
         }
+        parts.retain(|part| !part.is_empty() && *part != "0");
+
+        let separator = if parts.iter().all(|part| part.is_ascii()) {
+            " "
+        } else {
+            ""
+        };
+        parts.join(separator)
     }
 
     pub fn locate(&self, ip: &str) -> String {
@@ -82,6 +78,39 @@ impl Locator {
             } else {
                 return DATABASE_NOT_CONFIG.to_owned();
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Locator;
+
+    #[test]
+    fn format_location_handles_upstream_region_fields() {
+        for (location, expected) in [
+            ("中国|北京市|北京市|联通|CN", "中国北京市联通"),
+            ("中国|上海市|上海市|电信|CN", "中国上海市电信"),
+            ("中国|福建省|福州市|电信|CN", "中国福建省福州市电信"),
+            (
+                "United States|California|0|Google LLC|US",
+                "United States California Google LLC",
+            ),
+            ("Singapore|Singapore|Singapore|0|SG", "Singapore Singapore"),
+            ("中国|北京市|北京市|北京市|CN", "中国北京市北京市"),
+            ("中国|0||联通|CN", "中国联通"),
+            ("中国|北京市|北京市|联通|0", "中国北京市联通"),
+            ("中国|北京市|北京市|联通|", "中国北京市联通"),
+            ("Reserved|Reserved|Reserved|0|0", "局域网"),
+            ("0|0|0|0|0", ""),
+            ("||||", ""),
+            ("", ""),
+        ] {
+            assert_eq!(
+                Locator::format_location(location.to_owned()),
+                expected,
+                "{location}"
+            );
         }
     }
 }

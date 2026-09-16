@@ -66,6 +66,11 @@ impl Searcher {
         let end_ptr =
             u32::from_le_bytes(vector_index[start_point + 4..start_point + 8].try_into()?) as usize;
 
+        // As in upstream, zero vector pointers mean this prefix has no source data.
+        if start_ptr == 0 || end_ptr == 0 {
+            return Ok(String::new());
+        }
+
         // Binary search the segment index to get the region
         let segment_index_size = self.header.segment_index_size();
         let ip_bytes_len = self.header.ip_bytes_len();
@@ -157,7 +162,8 @@ impl Searcher {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Write};
+    use std::path::PathBuf;
     use std::str::FromStr;
 
     use super::*;
@@ -167,6 +173,104 @@ mod tests {
     const IPV4_CHECK_PATH: &str = "../../../data/ipv4_source.txt";
     const IPV6_XDB_PATH: &str = "../../../data/ip2region_v6.xdb";
     const IPV6_CHECK_PATH: &str = "../../../data/ipv6_source.txt";
+
+    struct TestXdb(PathBuf);
+
+    impl TestXdb {
+        fn new(bytes: &[u8]) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "xss-receiver-ip2region-{}-{}.xdb",
+                std::process::id(),
+                rand::random::<u64>()
+            ));
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            file.write_all(bytes).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestXdb {
+        fn drop(&mut self) {
+            std::fs::remove_file(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn missing_vector_returns_empty_for_all_ip_versions_and_cache_policies() {
+        const REGION: &str = "中国|广东省|深圳市|0|CN";
+
+        for (start_ip, end_ip, matching_ip, missing_ip) in [
+            ("1.1.1.0", "1.1.1.255", "1.1.1.1", "1.0.0.1"),
+            ("2001:db8::100", "2001:db8::1ff", "2001:db8::123", "400::1"),
+        ] {
+            let start_ip: IpAddr = start_ip.parse().unwrap();
+            let end_ip: IpAddr = end_ip.parse().unwrap();
+            let missing_ip: IpAddr = missing_ip.parse().unwrap();
+            let data_offset = (HEADER_INFO_LENGTH + VECTOR_INDEX_LENGTH) as u32;
+            let index_offset = data_offset + REGION.len() as u32;
+
+            for (missing_start, missing_end) in [(0, 0), (0, index_offset), (index_offset, 0)] {
+                let mut bytes = vec![0; data_offset as usize];
+                bytes[0..2].copy_from_slice(&3u16.to_le_bytes());
+                bytes[2..4].copy_from_slice(&1u16.to_le_bytes());
+                bytes[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+                bytes[8..12].copy_from_slice(&index_offset.to_le_bytes());
+                bytes[12..16].copy_from_slice(&index_offset.to_le_bytes());
+                let version: u16 = if start_ip.is_ipv4() { 4 } else { 6 };
+                bytes[16..18].copy_from_slice(&version.to_le_bytes());
+                bytes[18..20].copy_from_slice(&4u16.to_le_bytes());
+                // Poison reserved header bytes: dereferencing a zero vector must
+                // not treat the header as an IPv6 segment with a data pointer.
+                bytes[32..34].copy_from_slice(&1u16.to_le_bytes());
+                bytes[34..38].copy_from_slice(&u32::MAX.to_le_bytes());
+
+                for (ip, first, last) in [
+                    (start_ip, index_offset, index_offset),
+                    (missing_ip, missing_start, missing_end),
+                ] {
+                    let prefix = match ip {
+                        IpAddr::V4(ip) => [ip.octets()[0], ip.octets()[1]],
+                        IpAddr::V6(ip) => [ip.octets()[0], ip.octets()[1]],
+                    };
+                    let offset = HEADER_INFO_LENGTH
+                        + VECTOR_INDEX_SIZE
+                            * (prefix[0] as usize * VECTOR_INDEX_COLS + prefix[1] as usize);
+                    bytes[offset..offset + 4].copy_from_slice(&first.to_le_bytes());
+                    bytes[offset + 4..offset + 8].copy_from_slice(&last.to_le_bytes());
+                }
+
+                bytes.extend_from_slice(REGION.as_bytes());
+                for ip in [start_ip, end_ip] {
+                    match ip {
+                        IpAddr::V4(ip) => bytes.extend(u32::from(ip).to_le_bytes()),
+                        IpAddr::V6(ip) => bytes.extend(ip.octets()),
+                    }
+                }
+                bytes.extend((REGION.len() as u16).to_le_bytes());
+                bytes.extend(data_offset.to_le_bytes());
+                let database = TestXdb::new(&bytes);
+
+                for policy in [
+                    CachePolicy::NoCache,
+                    CachePolicy::VectorIndex,
+                    CachePolicy::FullMemory,
+                ] {
+                    let searcher =
+                        Searcher::new(database.0.to_string_lossy().into_owned(), policy).unwrap();
+                    assert_eq!(searcher.search(matching_ip).unwrap(), REGION);
+                    assert_eq!(
+                        searcher.search(missing_ip.to_string().as_str()).unwrap(),
+                        "",
+                        "{missing_ip}, {policy:?}, vector=({missing_start}, {missing_end})"
+                    );
+                }
+            }
+        }
+    }
 
     ///test all types find correct
     #[test]
