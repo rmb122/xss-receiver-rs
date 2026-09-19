@@ -1,5 +1,6 @@
 <template>
   <div v-if="visible || loadError" class="px-4 pb-4">
+    <div v-if="visible" class="pa-1" />
     <form v-if="visible" class="d-flex align-start ga-2 flex-wrap" @submit.prevent="emit('apply')">
       <v-text-field
         v-model="model"
@@ -48,6 +49,12 @@
                   parsed_body_type 仅支持 <code>= !=</code>, 值为
                   <code>"NONE" "FAILED" "FORM" "JSON"</code>.
                 </p>
+                <p v-if="kind === 'http'">
+                  raw_body 支持 <code>= != contains</code>, 将字符串编码为 UTF-8
+                  字节后匹配原始请求体. <code>raw_body = "asd"</code> 比较完整内容,
+                  <code>contains(raw_body, "asd")</code> 搜索字节子串,
+                  <code>contains(raw_body, "\u0000")</code> 搜索 NUL 字节.
+                </p>
                 <p>
                   时间支持 <code>"2026-09-19"</code>, <code>"2026-09-19 12:00:00"</code> 或
                   <code>"2026-09-19T12:00:00+08:00"</code>. 仅日期表示零点, 日期与时间之间也可用 T,
@@ -87,7 +94,7 @@ const fields = computed(
   () =>
     'id, client_ip, client_port, location, create_time, error_log, ' +
     (props.kind === 'http'
-      ? 'method, path, raw_query, parsed_body_type'
+      ? 'method, path, raw_query, raw_body, parsed_body_type'
       : 'query_name, query_type, query_class'),
 )
 const example = computed(() =>

@@ -155,18 +155,19 @@ and `data` contains the requested page in descending ID order. `page` defaults t
 | Logs      | Filterable fields                                                        |
 | --------- | ------------------------------------------------------------------------ |
 | Both      | `id`, `client_ip`, `client_port`, `location`, `create_time`, `error_log` |
-| HTTP only | `method`, `path`, `raw_query`, `parsed_body_type`                        |
+| HTTP only | `method`, `path`, `raw_query`, `raw_body`, `parsed_body_type`            |
 | DNS only  | `query_name`, `query_type`, `query_class`                                |
 
 - `id` and `client_port` take 32-bit integers, without quotes. Integers and timestamps support `=`, `!=`, `<`, `<=`, `>`, `>=`.
 - Text fields take JSON double-quoted strings and support case-sensitive `=`, `!=`, and `contains(field, "text")`. The substring is literal, including `%`, `_`, and backslashes; use JSON escaping within strings.
 - `parsed_body_type` supports only `=` and `!=` with `"NONE"`, `"FAILED"`, `"FORM"`, or `"JSON"`.
+- `raw_body` supports `=`, `!=`, and `contains` with JSON double-quoted strings. The decoded string is encoded as UTF-8 and bound as `bytea`: equality compares the entire stored body, and `contains` searches for a literal byte substring. For example, `raw_body = "asd"`, `raw_body != ""`, or `contains(raw_body, "\u0000")`. Invalid UTF-8 bytes in the body are allowed; the body is not decoded or parsed. Query encoding does not depend on Content-Type. Ordinary text fields reject NUL characters.
 - `error_log = null` and `error_log != null` check for absent/present errors. Other text comparisons, including their negations, do not match null values.
 - Combine conditions with `&&`, `||`, `!`, and parentheses. Logical precedence is `!`, then `&&`, then `||`.
 - `create_time` accepts RFC3339, `YYYY-MM-DD`, or `YYYY-MM-DD HH:mm:ss`. `T` can replace the space and fractional seconds are accepted. Dates mean midnight, not a whole-day range.
 - Pass `timezone` as an IANA name, e.g. `Asia/Shanghai`, whenever a timestamp has no explicit offset. The UI sends the browser's timezone. Explicit timestamp offsets take precedence; ambiguous or nonexistent local times require an explicit offset.
 - Unknown fields, unsupported operations, invalid types/times, and malformed expressions return the existing error envelope: HTTP 200 with `code: 500`, a descriptive `msg`, and `payload: null`. Filter errors include a 1-based character position. This is not an authentication error.
-- Limits: 256 conditions and logical operators, and 64 levels of parentheses/negation. Nested Header, Body, Query, and extra_info lookups are unsupported.
+- Limits: 256 conditions and logical operators, and 64 levels of parentheses/negation. Header filtering and nested Body, Query, and extra_info lookups are unsupported.
 
 Use `--data-urlencode` so quotes, `&&`, and timezone offsets are encoded correctly:
 
@@ -178,6 +179,9 @@ curl -s -G -b cookies.txt "$BASE/http_log" \
 
 curl -s -G -b cookies.txt "$BASE/dns_log" \
   --data-urlencode 'filter=query_type = "A" && !contains(query_name, "example.com")'
+
+curl -s -G -b cookies.txt "$BASE/http_log" \
+  --data-urlencode 'filter=contains(raw_body, "asd") && method = "POST"'
 ```
 
 ## End-to-end example: add script -> add route -> read latest logs

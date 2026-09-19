@@ -228,9 +228,6 @@ impl Parser<'_> {
             let end = end.ok_or_else(|| self.error("unterminated string"))?;
             let value: String = serde_json::from_str(&self.input[start..end])
                 .map_err(|error| self.error(&format!("invalid string: {error}")))?;
-            if value.contains('\0') {
-                return Err(self.error("text filters cannot contain a null character"));
-            }
             self.offset = end;
             return Ok(Value::String(value));
         }

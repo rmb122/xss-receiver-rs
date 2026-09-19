@@ -103,6 +103,7 @@ Pagination and refresh use the applied filter. Invalid input preserves the last 
 ```text
 client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"
 method = "POST" && contains(path, "/api")
+contains(raw_body, "asd") && method = "POST"
 query_type = "A" && !contains(query_name, "example.com")
 error_log != null
 ```
@@ -110,15 +111,16 @@ error_log != null
 | Logs      | Filterable fields                                                        |
 | --------- | ------------------------------------------------------------------------ |
 | Both      | `id`, `client_ip`, `client_port`, `location`, `create_time`, `error_log` |
-| HTTP only | `method`, `path`, `raw_query`, `parsed_body_type`                        |
+| HTTP only | `method`, `path`, `raw_query`, `raw_body`, `parsed_body_type`            |
 | DNS only  | `query_name`, `query_type`, `query_class`                                |
 
 - Integers and timestamps support `=`, `!=`, `<`, `<=`, `>`, `>=`. Strings use JSON double quotes and escapes, and support case-sensitive `=`, `!=`, and `contains(field, "text")`. `contains` searches for a literal substring; `%` and `_` are ordinary characters.
 - Combine conditions using `&&`, `||`, `!`, and parentheses. Logical precedence is `!`, then `&&`, then `||`. Filters allow at most 256 conditions and logical operators, with at most 64 levels of parentheses and negation.
 - `parsed_body_type` supports only `=` and `!=` with `"NONE"`, `"FAILED"`, `"FORM"`, or `"JSON"`.
+- `raw_body` supports `=`, `!=`, and `contains`. Query strings are decoded using JSON escape rules and encoded as UTF-8 bytes to match the stored raw request body. `raw_body = "asd"` compares the entire body, `contains(raw_body, "asd")` searches for a byte substring, and `contains(raw_body, "\u0000")` searches for a NUL byte. `%` and `_` are ordinary bytes. The body does not need to be valid UTF-8; filtering does not decode it according to Content-Type or parse its contents.
 - `error_log = null` matches logs without an error; `error_log != null` matches logs with an error. Other text comparisons and their negations do not match null values.
 - Times accept RFC3339, `YYYY-MM-DD`, or `YYYY-MM-DD HH:mm:ss`. `T` may replace the space, and fractional seconds are allowed. Dates mean midnight; equality matches that instant, not the entire day. Times without an offset use the browser's local timezone. Ambiguous or nonexistent local times during daylight saving changes require an explicit offset, e.g. `"2026-11-01T01:30:00-07:00"`.
-- Filtering runs in the database before pagination; the total is the number of matching logs. Only the fields above are supported, without nested Header, Body, Query, or extra_info lookups.
+- Filtering runs in the database before pagination; the total is the number of matching logs. Only the fields above are supported. Header filtering and nested Body, Query, or extra_info lookups are unsupported.
 
 Both log listing APIs accept `filter` and `timezone`. Use an IANA timezone name when any time in the filter lacks an explicit offset.
 See the [admin API reference](skills/xss-receiver/admin-api.md#log-endpoints) for request and error conventions.

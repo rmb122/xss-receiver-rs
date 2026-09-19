@@ -11,8 +11,9 @@ pub struct LogQuery {
     pub page_size: i64,
     /// Filter with =, !=, <, <=, >, >=, &&, ||, !, parentheses and contains(field, "text").
     /// Common fields: id, client_ip, client_port, location, create_time, error_log.
-    /// HTTP also supports method, path, raw_query, parsed_body_type; DNS supports query_name, query_type, query_class.
+    /// HTTP also supports method, path, raw_query, raw_body, parsed_body_type; DNS supports query_name, query_type, query_class.
     /// Strings use JSON double quotes. Text supports =, != and case-sensitive contains; integers and times support all comparisons.
+    /// raw_body supports =, != and contains using the string's UTF-8 bytes, including \u0000. Equality compares the entire stored body.
     /// Use error_log = null or error_log != null to check for missing errors. Empty filters match all logs.
     pub filter: Option<String>,
     /// IANA timezone, e.g. Asia/Shanghai. Required for filter times without an explicit RFC3339 offset.
