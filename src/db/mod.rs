@@ -10,6 +10,7 @@ pub mod dns_log;
 pub mod dns_route;
 pub mod http_log;
 pub mod http_route;
+pub mod log_filter;
 pub mod system_log;
 pub mod user;
 

@@ -95,6 +95,41 @@ ipv6_db = "docker/ip2region_v6.xdb"  # IPv6 归属地库路径
 xss-receiver-rs <config_file>
 ```
 
+## 日志过滤
+
+HTTP 和 DNS 日志页面支持表达式过滤. 点击过滤按钮展开输入框, 输入后按 Enter 或点击应用, 清空可恢复全部日志. 输入框右侧的问号按钮提供语法与字段帮助.
+分页, 刷新和自动刷新都使用已应用条件; 输入错误时保留上次有效结果并显示错误位置.
+
+```text
+client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"
+method = "POST" && contains(path, "/api")
+query_type = "A" && !contains(query_name, "example.com")
+error_log != null
+```
+
+| 日志      | 可过滤字段                                                               |
+| --------- | ------------------------------------------------------------------------ |
+| 共有      | `id`, `client_ip`, `client_port`, `location`, `create_time`, `error_log` |
+| HTTP 专有 | `method`, `path`, `raw_query`, `parsed_body_type`                        |
+| DNS 专有  | `query_name`, `query_type`, `query_class`                                |
+
+- 整数和时间支持 `=`, `!=`, `<`, `<=`, `>`, `>=`. 字符串使用双引号和 JSON 转义, 支持 `=`, `!=`, `contains(field, "text")`, 区分大小写. `contains` 按字面子串匹配, `%` 和 `_` 是普通字符.
+- 使用 `&&`, `||`, `!` 和括号组合条件, 逻辑优先级为 `!`, `&&`, `||`. 最多 256 个条件和逻辑运算符, 括号和取反最多嵌套 64 层.
+- `parsed_body_type` 仅支持 `=` 和 `!=`, 值为 `"NONE"`, `"FAILED"`, `"FORM"`, `"JSON"`.
+- `error_log = null` 表示没有错误, `error_log != null` 表示有错误. 其他文本比较及其取反不匹配空值.
+- 时间支持 RFC3339, `YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`, 日期和时间之间也可用 `T`, 秒后允许小数. 仅日期表示零点, 相等比较匹配该时刻而非一整天. 未写偏移时按浏览器当地时区解释; 夏令时导致当地时间不存在或对应两个时刻时, 需要显式偏移, 例如 `"2026-11-01T01:30:00-07:00"`.
+- 过滤在数据库分页前执行, 总数为匹配条数. 当前仅支持上表中的普通字段, 不支持 Header, Body, 结构化 Query 或 extra_info 按键过滤.
+
+两个日志列表 API 接受 `filter` 和 `timezone` 参数. `timezone` 使用 IANA 时区名称; 时间未写偏移时必须提供它.
+调用示例及错误约定见 [管理 API 文档](skills/xss-receiver/admin-api.md#log-endpoints).
+
+```bash
+curl -s -G -b cookies.txt "$BASE/http_log" \
+  --data-urlencode 'filter=client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"' \
+  --data-urlencode 'timezone=Asia/Shanghai' \
+  --data-urlencode 'page=1' --data-urlencode 'page_size=20'
+```
+
 ## 文件格式约定
 
 路由的处理器（handler）指向存储中的一个文件。平台为不同用途约定了一组扩展名，管理后台的编辑器会据此自动提供语法高亮、类型提示与 Schema 校验：
@@ -134,8 +169,8 @@ xss-receiver-rs <config_file>
 脚本可以导入 user storage 中的其他 ESM 文件：
 
 ```js
-import { normalize } from './lib/normalize.hjs'
-const shared = await import('shared/utils.js')
+import { normalize } from "./lib/normalize.hjs";
+const shared = await import("shared/utils.js");
 ```
 
 - `./` 和 `../` 相对当前模块解析；不以 `./` / `../` 开头的路径相对 user storage 根目录解析。路径规范化后不得越过 storage 根目录。
@@ -204,14 +239,14 @@ const shared = await import('shared/utils.js')
 `http` 是服务端出站 HTTP 客户端，提供 `request`、`get`、`post`、`put`、`patch`、`delete`、`head` 方法，并返回 Promise：
 
 ```js
-const upstream = await http.post('https://example.com/api', {
-  headers: { 'content-type': 'application/json' },
+const upstream = await http.post("https://example.com/api", {
+  headers: { "content-type": "application/json" },
   body: JSON.stringify({ source: request.clientAddr }),
   timeout: 8000,
-})
+});
 
-const data = upstream.json()
-export default { status: upstream.statusCode, data }
+const data = upstream.json();
+export default { status: upstream.statusCode, data };
 ```
 
 请求选项包括 `method`、`headers`、`body`（字符串或 `Uint8Array`）、`timeout`、`maxResponseSize`、`maxRedirects` 与 `tlsVerify`。响应包含 `statusCode`、最终 `url`、多值 `headers`、`body`，以及可重复调用的 `text()` / `json()`。4xx/5xx 会正常返回；网络错误、超时、无效 JSON 或超过响应体上限时抛出异常。请求级限制只能收紧服务端配置；`tlsVerify` 默认为 `true`，请仅在确有需要时关闭。
@@ -259,6 +294,16 @@ pnpm build   # 产物输出到 frontend/dist，会被 rust-embed 内嵌
 ```bash
 cp config_example.toml config.toml   # 按需修改
 cargo run --release -- config.toml
+```
+
+### 验证日志过滤
+
+在仓库根目录运行单元测试. 数据库集成测试默认忽略, 显式运行时需要一个独立的空 PostgreSQL 测试库:
+
+```bash
+cargo test --locked db::log_filter
+TEST_DATABASE_URL='postgres://user:password@localhost/log_filter_test' \
+  cargo test --locked db::log_filter -- --include-ignored
 ```
 
 ## 目录结构

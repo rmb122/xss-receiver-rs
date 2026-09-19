@@ -5,6 +5,15 @@
         <v-icon class="mr-2">mdi-web</v-icon>
         HTTP 日志
         <v-spacer />
+        <v-btn
+          :color="filterVisible ? 'primary' : undefined"
+          :aria-expanded="filterVisible"
+          prepend-icon="mdi-filter-outline"
+          class="mr-2"
+          @click="filterVisible = !filterVisible"
+        >
+          过滤
+        </v-btn>
         <v-btn color="primary" prepend-icon="mdi-refresh" @click="fetchLogs()"> 刷新 </v-btn>
         <v-btn
           :color="autoRefresh ? 'primary' : undefined"
@@ -15,6 +24,16 @@
           自动刷新: {{ autoRefresh ? '开启' : '关闭' }}
         </v-btn>
       </v-card-title>
+      <LogFilterBar
+        v-model="filterInput"
+        kind="http"
+        :visible="filterVisible"
+        :error="filterError"
+        :load-error="loadError"
+        :applying="applyingFilter"
+        @apply="applyFilter"
+        @clear="clearFilter"
+      />
       <v-data-table-server
         v-model:items-per-page="pageSize"
         v-model:page="page"
@@ -218,6 +237,7 @@ import { showSuccessToast, showErrorToast } from '@/utils/toast'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
 import { useLogTable } from '@/composables/useLogTable'
+import LogFilterBar from '@/components/LogFilterBar.vue'
 
 const headers: DataTableHeader[] = [
   { title: '', key: 'data-table-expand', width: '40px', align: 'center' },
@@ -277,6 +297,8 @@ const headers: DataTableHeader[] = [
   { title: '数据摘要', key: 'summary', sortable: false },
 ]
 
+const filterVisible = ref(false)
+
 const {
   logs,
   total,
@@ -285,6 +307,12 @@ const {
   loading,
   expanded,
   autoRefresh,
+  filterInput,
+  filterError,
+  loadError,
+  applyingFilter,
+  applyFilter,
+  clearFilter,
   fetchLogs,
   onOptionsUpdate,
   handleRowClick,

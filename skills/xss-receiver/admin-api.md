@@ -129,12 +129,12 @@ curl -s -b cookies.txt -X POST "$BASE/http_route" \
 
 ## Log endpoints
 
-| Method | Path                           | Notes                                |
-| ------ | ------------------------------ | ------------------------------------ |
-| GET    | `/http_log?page=&page_size=`   | HTTP request logs, newest first      |
-| GET    | `/http_log/{id}/raw_body`      | Raw request body of one log (binary) |
-| GET    | `/dns_log?page=&page_size=`    | DNS query logs                       |
-| GET    | `/system_log?page=&page_size=` | System logs (logins, etc.)           |
+| Method | Path                                           | Notes                                    |
+| ------ | ---------------------------------------------- | ---------------------------------------- |
+| GET    | `/http_log?page=&page_size=&filter=&timezone=` | Filtered HTTP request logs, newest first |
+| GET    | `/http_log/{id}/raw_body`                      | Raw request body of one log (binary)     |
+| GET    | `/dns_log?page=&page_size=&filter=&timezone=`  | Filtered DNS query logs, newest first    |
+| GET    | `/system_log?page=&page_size=`                 | System logs (logins, etc.)               |
 
 Main HTTP log fields: `id, client_ip, client_port, location, method, path, raw_query,
 parsed_query, header, parsed_body_type, parsed_body, file, extra_info, error_log, create_time`.
@@ -145,6 +145,39 @@ parsed_query, header, parsed_body_type, parsed_body, file, extra_info, error_log
 ```bash
 # Fetch the latest 20 HTTP requests (newest first)
 curl -s -b cookies.txt "$BASE/http_log?page=1&page_size=20"
+```
+
+### Filter expressions
+
+`filter` is optional; omitted or whitespace-only filters match all logs. `total` counts all matching rows,
+and `data` contains the requested page in descending ID order. `page` defaults to 1 and `page_size` to 20 (maximum 500).
+
+| Logs      | Filterable fields                                                        |
+| --------- | ------------------------------------------------------------------------ |
+| Both      | `id`, `client_ip`, `client_port`, `location`, `create_time`, `error_log` |
+| HTTP only | `method`, `path`, `raw_query`, `parsed_body_type`                        |
+| DNS only  | `query_name`, `query_type`, `query_class`                                |
+
+- `id` and `client_port` take 32-bit integers, without quotes. Integers and timestamps support `=`, `!=`, `<`, `<=`, `>`, `>=`.
+- Text fields take JSON double-quoted strings and support case-sensitive `=`, `!=`, and `contains(field, "text")`. The substring is literal, including `%`, `_`, and backslashes; use JSON escaping within strings.
+- `parsed_body_type` supports only `=` and `!=` with `"NONE"`, `"FAILED"`, `"FORM"`, or `"JSON"`.
+- `error_log = null` and `error_log != null` check for absent/present errors. Other text comparisons, including their negations, do not match null values.
+- Combine conditions with `&&`, `||`, `!`, and parentheses. Logical precedence is `!`, then `&&`, then `||`.
+- `create_time` accepts RFC3339, `YYYY-MM-DD`, or `YYYY-MM-DD HH:mm:ss`. `T` can replace the space and fractional seconds are accepted. Dates mean midnight, not a whole-day range.
+- Pass `timezone` as an IANA name, e.g. `Asia/Shanghai`, whenever a timestamp has no explicit offset. The UI sends the browser's timezone. Explicit timestamp offsets take precedence; ambiguous or nonexistent local times require an explicit offset.
+- Unknown fields, unsupported operations, invalid types/times, and malformed expressions return the existing error envelope: HTTP 200 with `code: 500`, a descriptive `msg`, and `payload: null`. Filter errors include a 1-based character position. This is not an authentication error.
+- Limits: 256 conditions and logical operators, and 64 levels of parentheses/negation. Nested Header, Body, Query, and extra_info lookups are unsupported.
+
+Use `--data-urlencode` so quotes, `&&`, and timezone offsets are encoded correctly:
+
+```bash
+curl -s -G -b cookies.txt "$BASE/http_log" \
+  --data-urlencode 'filter=client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"' \
+  --data-urlencode 'timezone=Asia/Shanghai' \
+  --data-urlencode 'page=1' --data-urlencode 'page_size=20'
+
+curl -s -G -b cookies.txt "$BASE/dns_log" \
+  --data-urlencode 'filter=query_type = "A" && !contains(query_name, "example.com")'
 ```
 
 ## End-to-end example: add script -> add route -> read latest logs

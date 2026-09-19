@@ -3,6 +3,7 @@ use diesel_async::{AsyncPgConnection, RunQueryDsl};
 
 use crate::db::{
     http_log::model::{HttpLog, NewHttpLog},
+    log_filter::LogFilter,
     schema::http_log,
 };
 
@@ -17,18 +18,22 @@ pub async fn insert_http_log(
         .await?);
 }
 
-// 分页查询 HTTP 日志
 pub async fn get_http_logs_paginated(
     conn: &mut AsyncPgConnection,
     page: i64,
     page_size: i64,
+    filter: &LogFilter,
 ) -> anyhow::Result<(Vec<HttpLog>, i64)> {
-    // 获取总数
-    let total: i64 = http_log::table.count().get_result(conn).await?;
-
-    // 分页查询
+    let filtered = || -> anyhow::Result<_> {
+        let mut query = http_log::table.into_boxed();
+        if let Some(predicate) = filter.http()? {
+            query = query.filter(predicate);
+        }
+        Ok(query)
+    };
+    let total: i64 = filtered()?.count().get_result(conn).await?;
     let offset = (page - 1) * page_size;
-    let logs = http_log::table
+    let logs = filtered()?
         .select(HttpLog::as_select())
         .order(http_log::id.desc())
         .limit(page_size)

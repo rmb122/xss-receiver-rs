@@ -1,9 +1,10 @@
-import request from '@/utils/request'
-import type { PaginatedRequest, PaginatedResponse } from '@/types/api'
+import request, { DISABLE_ERROR_TOAST_KEY } from '@/utils/request'
+import type { LogQuery, PaginatedResponse } from '@/types/api'
 import type { DnsLog } from '@/types/dnsLog'
 
-export function getDnsLogs(params: PaginatedRequest) {
+export function getDnsLogs(params: LogQuery) {
   return request.get<PaginatedResponse<DnsLog>>('/dns_log', {
     params,
+    [DISABLE_ERROR_TOAST_KEY]: true,
   })
 }

@@ -95,6 +95,41 @@ Run with:
 xss-receiver-rs <config_file>
 ```
 
+## Log Filtering
+
+HTTP and DNS log pages support expression filters. Click Filter to show the input, then press Enter or Apply to submit; Clear restores all logs. The question mark button on the right of the input opens syntax and field help.
+Pagination and refresh use the applied filter. Invalid input preserves the last valid results and reports the error position.
+
+```text
+client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"
+method = "POST" && contains(path, "/api")
+query_type = "A" && !contains(query_name, "example.com")
+error_log != null
+```
+
+| Logs      | Filterable fields                                                        |
+| --------- | ------------------------------------------------------------------------ |
+| Both      | `id`, `client_ip`, `client_port`, `location`, `create_time`, `error_log` |
+| HTTP only | `method`, `path`, `raw_query`, `parsed_body_type`                        |
+| DNS only  | `query_name`, `query_type`, `query_class`                                |
+
+- Integers and timestamps support `=`, `!=`, `<`, `<=`, `>`, `>=`. Strings use JSON double quotes and escapes, and support case-sensitive `=`, `!=`, and `contains(field, "text")`. `contains` searches for a literal substring; `%` and `_` are ordinary characters.
+- Combine conditions using `&&`, `||`, `!`, and parentheses. Logical precedence is `!`, then `&&`, then `||`. Filters allow at most 256 conditions and logical operators, with at most 64 levels of parentheses and negation.
+- `parsed_body_type` supports only `=` and `!=` with `"NONE"`, `"FAILED"`, `"FORM"`, or `"JSON"`.
+- `error_log = null` matches logs without an error; `error_log != null` matches logs with an error. Other text comparisons and their negations do not match null values.
+- Times accept RFC3339, `YYYY-MM-DD`, or `YYYY-MM-DD HH:mm:ss`. `T` may replace the space, and fractional seconds are allowed. Dates mean midnight; equality matches that instant, not the entire day. Times without an offset use the browser's local timezone. Ambiguous or nonexistent local times during daylight saving changes require an explicit offset, e.g. `"2026-11-01T01:30:00-07:00"`.
+- Filtering runs in the database before pagination; the total is the number of matching logs. Only the fields above are supported, without nested Header, Body, Query, or extra_info lookups.
+
+Both log listing APIs accept `filter` and `timezone`. Use an IANA timezone name when any time in the filter lacks an explicit offset.
+See the [admin API reference](skills/xss-receiver/admin-api.md#log-endpoints) for request and error conventions.
+
+```bash
+curl -s -G -b cookies.txt "$BASE/http_log" \
+  --data-urlencode 'filter=client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"' \
+  --data-urlencode 'timezone=Asia/Shanghai' \
+  --data-urlencode 'page=1' --data-urlencode 'page_size=20'
+```
+
 ## File Format Conventions
 
 A route's handler points to a file in storage. The platform defines a set of extensions for different purposes, and the admin panel editor uses them to provide syntax highlighting, type hints, and schema validation:
@@ -134,8 +169,8 @@ The `request`, `response`, `storage`, `cache`, `http`, and global helper functio
 Scripts can import other ESM files from user storage:
 
 ```js
-import { normalize } from './lib/normalize.hjs'
-const shared = await import('shared/utils.js')
+import { normalize } from "./lib/normalize.hjs";
+const shared = await import("shared/utils.js");
 ```
 
 - `./` and `../` resolve relative to the importing module. Specifiers without either prefix resolve from the user-storage root. Normalized paths may not escape that root.
@@ -204,14 +239,14 @@ The `request.body` and uploaded file `content` properties cannot be reassigned; 
 `http` is the server-side outbound HTTP client. It provides `request`, `get`, `post`, `put`, `patch`, `delete`, and `head`, all returning a Promise:
 
 ```js
-const upstream = await http.post('https://example.com/api', {
-  headers: { 'content-type': 'application/json' },
+const upstream = await http.post("https://example.com/api", {
+  headers: { "content-type": "application/json" },
   body: JSON.stringify({ source: request.clientAddr }),
   timeout: 8000,
-})
+});
 
-const data = upstream.json()
-export default { status: upstream.statusCode, data }
+const data = upstream.json();
+export default { status: upstream.statusCode, data };
 ```
 
 Request options are `method`, `headers`, `body` (a string or `Uint8Array`), `timeout`, `maxResponseSize`, `maxRedirects`, and `tlsVerify`. Responses expose `statusCode`, final `url`, multi-value `headers`, `body`, and repeatable `text()` / `json()` methods. HTTP 4xx/5xx responses resolve normally; network errors, timeouts, invalid JSON, and oversized bodies throw. Per-request limits may only tighten the server configuration. `tlsVerify` defaults to `true` and should only be disabled when necessary.
@@ -259,6 +294,16 @@ pnpm build   # output goes to frontend/dist and is embedded via rust-embed
 ```bash
 cp config_example.toml config.toml   # edit as needed
 cargo run --release -- config.toml
+```
+
+### Verify log filtering
+
+Run unit tests from the repository root. The database integration test is ignored by default and requires a separate, empty PostgreSQL test database when explicitly enabled:
+
+```bash
+cargo test --locked db::log_filter
+TEST_DATABASE_URL='postgres://user:password@localhost/log_filter_test' \
+  cargo test --locked db::log_filter -- --include-ignored
 ```
 
 ## Project Structure

@@ -1,11 +1,12 @@
-import request from '@/utils/request'
-import type { PaginatedRequest, PaginatedResponse } from '@/types/api'
+import request, { DISABLE_ERROR_TOAST_KEY } from '@/utils/request'
+import type { LogQuery, PaginatedResponse } from '@/types/api'
 import type { HttpLog } from '@/types/httpLog'
 import { BASE_URL } from '@/config/api'
 
-export function getHttpLogs(params: PaginatedRequest) {
+export function getHttpLogs(params: LogQuery) {
   return request.get<PaginatedResponse<HttpLog>>('/http_log', {
     params,
+    [DISABLE_ERROR_TOAST_KEY]: true,
   })
 }
 

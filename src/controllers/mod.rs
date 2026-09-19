@@ -26,6 +26,7 @@ mod frontend;
 mod http_log;
 mod http_route;
 mod index;
+mod log_query;
 mod system_log;
 mod user;
 
