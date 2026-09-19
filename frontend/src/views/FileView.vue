@@ -70,6 +70,7 @@ import DirectoryFormDialog from '@/components/file/DirectoryFormDialog.vue'
 import FileUploadDialog from '@/components/file/FileUploadDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import {
+  createFile,
   mkdir,
   remove as apiRemove,
   rename as apiRename,
@@ -382,8 +383,7 @@ async function onFormSubmit(value: string) {
     switch (formMode.value) {
       case 'new-file': {
         const newPath = target.path ? `${target.path}/${value}` : value
-        const blob = new Blob([''], { type: 'text/plain' })
-        await uploadFile(newPath, blob)
+        await createFile(newPath)
         showSuccessToast('文件创建成功')
         await explorer.value?.refreshNode(target)
         break

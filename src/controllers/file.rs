@@ -111,6 +111,22 @@ pub async fn list_all(
     Ok(Response::ok().payload(ListAllResponse { files }))
 }
 
+/// Create an empty file, rejecting paths that already exist.
+#[utoipa::path(
+    post,
+    path = "/create",
+    request_body = PathRequest,
+    responses((status = OK, body = Response<bool>))
+)]
+pub async fn create(
+    State(ctx): State<Context>,
+    Claims(_user): Claims<LoggedUser>,
+    Json(req): Json<PathRequest>,
+) -> Result<Response<bool>, AppError> {
+    ctx.storage.user().create_file(&req.path)?;
+    Ok(Response::ok().payload(true))
+}
+
 /// 创建目录（递归创建）
 #[utoipa::path(
     post,

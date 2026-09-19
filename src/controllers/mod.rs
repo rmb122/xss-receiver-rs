@@ -164,6 +164,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
     let file_router = OpenApiRouter::new()
         .routes(routes!(file::list))
         .routes(routes!(file::list_all))
+        .routes(routes!(file::create))
         .routes(routes!(file::mkdir))
         .routes(routes!(file::remove))
         .routes(routes!(file::rename))

@@ -28,6 +28,10 @@ export function statFile(path: string) {
   return request.get<Entry>('/file/stat', { params: { path } })
 }
 
+export function createFile(path: string) {
+  return request.post<boolean>('/file/create', { path })
+}
+
 export function mkdir(path: string) {
   return request.post<boolean>('/file/mkdir', { path })
 }

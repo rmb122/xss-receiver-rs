@@ -163,6 +163,17 @@ impl UserStorage {
         Ok(())
     }
 
+    /// Create an empty file without replacing an existing path.
+    /// The parent directory must already exist.
+    pub fn create_file(&self, path: &str) -> anyhow::Result<()> {
+        let abs = self.resolve(path)?;
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(abs)?;
+        Ok(())
+    }
+
     /// 递归创建目录
     pub fn mkdir(&self, path: &str) -> anyhow::Result<()> {
         let abs = self.resolve(path)?;

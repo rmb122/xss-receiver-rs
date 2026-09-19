@@ -58,3 +58,7 @@ utoipa-axum = "0.2.0"
 [patch.crates-io]
 http = { path = "thirdparty/http/" }
 httparse = { path = "thirdparty/httparse/" }
+
+[profile.dev]
+debug = "line-tables-only"
+incremental = false
