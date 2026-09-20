@@ -1,26 +1,32 @@
-/**
- * 后端 JS 脚本引擎注入对象的 TypeScript 类型声明。
- * .hjs 使用 HTTP handler 类型，.djs 使用 DNS handler 类型。
- */
+/** TypeScript declarations for the HTTP (.hjs) and DNS (.djs) script runtimes. */
 const commonScriptEngineTypes = `
 /// <reference no-default-lib="true"/>
 /// <reference lib="es2024" />
 /// <reference lib="esnext.array" />
 /// <reference lib="esnext.collection" />
 /// <reference lib="esnext.error" />
+/// <reference lib="esnext.disposable" />
+/// <reference lib="esnext.iterator" />
 /// <reference lib="esnext.float16" />
 /// <reference lib="esnext.promise" />
 /// <reference lib="esnext.sharedmemory" />
 
-/** Boa exposes the intrinsic TypedArray constructor as a global, but it cannot be constructed directly. */
-interface TypedArrayConstructor {
-  readonly prototype: object;
-  readonly [Symbol.species]: TypedArrayConstructor;
+/** Additional globals provided by QuickJS-NG. */
+declare const InternalError: ErrorConstructor;
+
+declare class DOMException extends Error {
+  constructor(message?: string, name?: string);
+  readonly code: number;
 }
 
-declare const TypedArray: TypedArrayConstructor;
+declare const performance: {
+  readonly timeOrigin: number;
+  now(): number;
+};
 
-/** Annex B globals enabled by the backend's boa_engine feature set. */
+declare function queueMicrotask(callback: () => void): void;
+declare function atob(data: string): string;
+declare function btoa(data: string): string;
 declare function escape(value: string): string;
 declare function unescape(value: string): string;
 

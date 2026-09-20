@@ -1,18 +1,11 @@
-use boa_engine::JsValue;
-use boa_engine::object::builtins::JsArray;
-use boa_engine::{
-    Context, JsError, NativeFunction, js_string, object::ObjectInitializer, property::Attribute,
-};
-use boa_gc::Gc;
-use boa_gc::{Finalize, Trace, empty_trace};
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use super::helpers::{
-    check_argument_count, ensure_exists, get_response_from_context, read_u8_array_from_js_value,
-};
-use super::storage::get_storage_from_context;
+use rquickjs::{Ctx, Exception, Function, Object, Result, Value, function::Rest, object::Property};
 
-/// Response 数据结构
+use crate::storage::UserStorage;
+
+use super::helpers::{check_argument_count, ensure_exists, read_u8_array_from_js_value};
+
 #[derive(Clone)]
 pub struct HttpResponse {
     pub status_code: u16,
@@ -21,179 +14,289 @@ pub struct HttpResponse {
     pub body: Vec<u8>,
 }
 
-impl HttpResponse {
-    fn new() -> Self {
-        HttpResponse {
-            status_code: 200,
-            headers: HashMap::new(),
-            body_file: None,
-            body: Vec::new(),
-        }
-    }
-}
+pub fn register_response_to_context<'js>(
+    ctx: &Ctx<'js>,
+    storage: UserStorage,
+) -> Result<Rc<RefCell<HttpResponse>>> {
+    let response = Rc::new(RefCell::new(HttpResponse {
+        status_code: 200,
+        headers: HashMap::new(),
+        body_file: None,
+        body: Vec::new(),
+    }));
+    let object = Object::new(ctx.clone())?;
 
-/// ResponseCell 用于在 JS 引擎中共享 Response
-pub struct HttpResponseCell {
-    pub cell: RefCell<HttpResponse>,
-}
-
-impl Finalize for HttpResponseCell {}
-
-// SAFETY: Response 里面不存储来自 js 引擎的东西, 不用具体实现 trace
-unsafe impl Trace for HttpResponseCell {
-    empty_trace!();
-}
-
-impl HttpResponseCell {
-    fn new() -> Self {
-        HttpResponseCell {
-            cell: RefCell::new(HttpResponse::new()),
-        }
-    }
-}
-
-/// 注册 Response 对象到 JS 上下文
-pub fn register_response_to_context(context: &mut Context) -> Gc<HttpResponseCell> {
-    let response = Gc::new(HttpResponseCell::new());
-    context.insert_data(response.clone());
-
-    let mut object_builder = ObjectInitializer::new(context);
-
-    // response.send(data: String | Uint8Array): void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-
-            let data = read_u8_array_from_js_value(&args[0], ctx)?;
-            let mut response = get_response_from_context(ctx)?;
+    let shared = response.clone();
+    object.set(
+        "send",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let data = read_u8_array_from_js_value(&args[0], &ctx)?;
+            let mut response = shared.borrow_mut();
             if response.body_file.is_some() {
-                return Err(JsError::from_opaque(
-                    js_string!("response.send() is mutually exclusive with sendFile()").into(),
+                return Err(Exception::throw_message(
+                    &ctx,
+                    "response.send() is mutually exclusive with sendFile()",
                 ));
             }
             response.body.extend(data);
+            Ok(())
+        })?,
+    )?;
 
-            Ok(JsValue::undefined())
-        }),
-        js_string!("send"),
-        1,
-    );
-
-    // response.sendFile(path: String): void
-    // 只能调用一次, 且与 send() 互斥
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-
-            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string")?
-                .to_std_string_lossy();
-
-            // 通过 storage 的 resolve 校验路径并拿到绝对路径 (同时验证文件存在)
-            let storage = get_storage_from_context(ctx)?;
-            let abs_path = storage.storage.absolute_path(&path).map_err(|e| {
-                JsError::from_opaque(
-                    js_string!(format!("response.sendFile() invalid path: {}", e)).into(),
+    let shared = response.clone();
+    object.set(
+        "sendFile",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let path = ensure_exists(args[0].as_string(), "argument 0 must be a string", &ctx)?
+                .to_string()?;
+            let abs_path = storage.absolute_path(&path).map_err(|error| {
+                Exception::throw_message(
+                    &ctx,
+                    &format!("response.sendFile() invalid path: {error}"),
                 )
             })?;
-            let metadata = storage.storage.metadata(&path).map_err(|e| {
-                JsError::from_opaque(
-                    js_string!(format!("response.sendFile() cannot access file: {}", e)).into(),
+            let metadata = storage.metadata(&path).map_err(|error| {
+                Exception::throw_message(
+                    &ctx,
+                    &format!("response.sendFile() cannot access file: {error}"),
                 )
             })?;
             if !metadata.is_file() {
-                return Err(JsError::from_opaque(
-                    js_string!("response.sendFile() path is not a regular file").into(),
+                return Err(Exception::throw_message(
+                    &ctx,
+                    "response.sendFile() path is not a regular file",
                 ));
             }
-
-            let mut response = get_response_from_context(ctx)?;
+            let mut response = shared.borrow_mut();
             if response.body_file.is_some() {
-                return Err(JsError::from_opaque(
-                    js_string!("response.sendFile() can only be called once").into(),
+                return Err(Exception::throw_message(
+                    &ctx,
+                    "response.sendFile() can only be called once",
                 ));
             }
             if !response.body.is_empty() {
-                return Err(JsError::from_opaque(
-                    js_string!("response.sendFile() is mutually exclusive with send()").into(),
+                return Err(Exception::throw_message(
+                    &ctx,
+                    "response.sendFile() is mutually exclusive with send()",
                 ));
             }
             response.body_file = Some(abs_path);
+            Ok(())
+        })?,
+    )?;
 
-            Ok(JsValue::undefined())
-        }),
-        js_string!("sendFile"),
-        1,
-    );
+    let shared = response.clone();
+    object.set(
+        "sendStatus",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let status = ensure_exists(args[0].as_number(), "not a valid number", &ctx)?;
+            shared.borrow_mut().status_code = status as u16;
+            Ok::<_, rquickjs::Error>(())
+        })?,
+    )?;
 
-    // response.sendStatus(code: Number): void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-
-            let status_code = ensure_exists(args[0].as_number(), "not a valid number")?;
-            let mut response = get_response_from_context(ctx)?;
-            response.status_code = status_code as u16;
-
-            Ok(JsValue::undefined())
-        }),
-        js_string!("sendStatus"),
-        1,
-    );
-
-    // response.sendHeader(key: String, value: String | Array<String>): void
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 2)?;
-
+    let shared = response.clone();
+    object.set(
+        "sendHeader",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 2, &ctx)?;
             let key =
-                ensure_exists(args[0].as_string(), "not a valid string")?.to_std_string_lossy();
-            let value = &args[1];
-
-            if let Some(value) = value.as_string() {
-                get_response_from_context(ctx)?
-                    .headers
-                    .insert(key, vec![value.to_std_string_lossy()]);
+                ensure_exists(args[0].as_string(), "not a valid string", &ctx)?.to_string()?;
+            let values = if let Some(value) = args[1].as_string() {
+                vec![value.to_string()?]
             } else {
-                let value_array = JsArray::from_object(
-                    ensure_exists(
-                        value.as_object(),
-                        "argument 1 not a valid string or string array",
-                    )?
-                    .to_owned(),
+                let array = ensure_exists(
+                    args[1].as_array(),
+                    "argument 1 not a valid string or string array",
+                    &ctx,
                 )?;
-                let value_array_length = value_array.length(ctx)?;
-
-                let mut value_vec = vec![];
-
-                for idx in 0..value_array_length {
-                    value_vec.push(
+                let length: u32 = array.as_object().get("length")?;
+                let mut values = Vec::new();
+                for index in 0..length {
+                    let value = array.get::<Value>(index as usize)?;
+                    values.push(
                         ensure_exists(
-                            value_array.get(idx, ctx)?.as_string(),
-                            &format!("not a valid string in array index {}", idx),
+                            value.as_string(),
+                            &format!("not a valid string in array index {index}"),
+                            &ctx,
                         )?
-                        .to_std_string_lossy(),
+                        .to_string()?,
                     );
                 }
+                values
+            };
+            shared.borrow_mut().headers.insert(key, values);
+            Ok::<_, rquickjs::Error>(())
+        })?,
+    )?;
+    ctx.globals()
+        .prop("response", Property::from(object).enumerable())?;
+    Ok(response)
+}
 
-                get_response_from_context(ctx)?
-                    .headers
-                    .insert(key, value_vec);
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use rquickjs::{Context, Runtime};
+
+    use super::register_response_to_context;
+    use crate::{
+        dispatcher::script_engine::{
+            cache::{ScriptCache, register_cache_to_context},
+            storage::register_storage_to_context,
+            utils::register_utils_to_context,
+        },
+        storage::UserStorage,
+    };
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn oversized_sparse_header_arrays_return_errors() {
+        use crate::dispatcher::script_engine::{
+            create_context, evaluate_module,
+            http_client::{ScriptHttpClient, register_http_client_to_context},
+        };
+
+        let (_runtime, context) = create_context().await;
+        context
+            .with(|ctx| {
+                register_response_to_context(&ctx, UserStorage::new(std::env::temp_dir()))?;
+                let client = ScriptHttpClient::new(&crate::startup_config::ScriptHttp {
+                    allow_private_network: true,
+                    ..Default::default()
+                })
+                .unwrap();
+                register_http_client_to_context(&ctx, client)
+            })
+            .await
+            .unwrap();
+        let result = evaluate_module(
+            r#"
+            const values = new Array(2147483648);
+            const errors = [];
+            try {
+                response.sendHeader('X-Test', values);
+            } catch (error) {
+                errors.push(error instanceof TypeError && error.message.includes('index 0'));
             }
-
-            Ok(JsValue::undefined())
-        }),
-        js_string!("sendHeader"),
-        2,
-    );
-
-    let object = object_builder.build();
-    context
-        .register_global_property(
-            js_string!("response"),
-            object,
-            Attribute::READONLY | Attribute::ENUMERABLE,
+            try {
+                await http.get('http://127.0.0.1:1/', { headers: { 'X-Test': values } });
+            } catch (error) {
+                errors.push(error instanceof TypeError && error.message.includes('item 0'));
+            }
+            export default errors;
+        "#,
+            &context,
         )
-        .expect("property shouldn't exist");
+        .await
+        .unwrap();
+        assert_eq!(result, serde_json::json!([true, true]));
+    }
 
-    response
+    #[test]
+    fn binary_views_roundtrip_through_bindings() {
+        let root = std::env::temp_dir().join(format!("xss-bindings-{}", rand::random::<u64>()));
+        fs::create_dir_all(&root).unwrap();
+        let storage = UserStorage::new(root.clone());
+        let runtime = Runtime::new().unwrap();
+        let context = Context::full(&runtime).unwrap();
+        context.with(|ctx| {
+            let response = register_response_to_context(&ctx, storage.clone()).unwrap();
+            register_storage_to_context(&ctx, storage).unwrap();
+            register_utils_to_context(&ctx).unwrap();
+            register_cache_to_context(
+                &ctx,
+                ScriptCache::new(&crate::startup_config::ScriptCache {
+                    max_entries: 10,
+                    max_entry_size: 100,
+                    max_ttl: 60,
+                }),
+            )
+            .unwrap();
+            let encoded: String = ctx
+                .eval(
+                    r#"
+                const bytes = new Uint8Array([99, 65, 66, 67, 88]).subarray(1, 4);
+                cache.set("bytes", bytes);
+                bytes[0] = 90;
+                storage.mkdir("files");
+                storage.write("files/body", cache.get("bytes"));
+                storage.append("files/body", "!");
+                storage.rename("files/body", "files/result");
+                response.send(storage.read("files/result"));
+                response.send(base64Decode(base64Encode(bytes)));
+                response.send(urlDecode(urlEncode(" hello")));
+                response.sendStatus(201);
+                response.sendHeader("Set-Cookie", ["a=1", "b=2"]);
+                if (storage.list("files")[0].size !== 4 || storage.listAll().length !== 1) {
+                    throw new Error("unexpected storage listing");
+                }
+                storage.remove("files/result");
+                if (storage.exists("files/result")) throw new Error("remove failed");
+                base64Encode(bytes);
+            "#,
+                )
+                .unwrap();
+            assert_eq!(encoded, "WkJD");
+            let response = response.borrow();
+            assert_eq!(response.body, b"ABC!ZBC hello");
+            assert_eq!(response.status_code, 201);
+            assert_eq!(response.headers["Set-Cookie"], ["a=1", "b=2"]);
+        });
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn send_file_validates_paths_and_excludes_body_writes() {
+        let root = std::env::temp_dir().join(format!("xss-send-file-{}", rand::random::<u64>()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("body"), b"file content").unwrap();
+        let storage = UserStorage::new(root.clone());
+        let runtime = Runtime::new().unwrap();
+        let context = Context::full(&runtime).unwrap();
+        context.with(|ctx| {
+            let response = register_response_to_context(&ctx, storage.clone()).unwrap();
+            let errors: i32 = ctx
+                .eval(
+                    r#"
+                let errors = 0;
+                for (const path of ["../body", "missing", ""]) {
+                    try { response.sendFile(path); } catch (_) { errors++; }
+                }
+                response.sendFile("body");
+                try { response.send("text"); } catch (_) { errors++; }
+                try { response.sendFile("body"); } catch (_) { errors++; }
+                errors;
+            "#,
+                )
+                .unwrap();
+            assert_eq!(errors, 5);
+            assert_eq!(
+                response.borrow().body_file.as_deref(),
+                root.join("body").to_str()
+            );
+            assert!(response.borrow().body.is_empty());
+        });
+        let context = Context::full(&runtime).unwrap();
+        context.with(|ctx| {
+            let response = register_response_to_context(&ctx, storage).unwrap();
+            let rejected: bool = ctx
+                .eval(
+                    r#"
+                response.send("text");
+                let rejected = false;
+                try { response.sendFile("body"); } catch (_) { rejected = true; }
+                rejected;
+            "#,
+                )
+                .unwrap();
+            assert!(rejected);
+            assert!(response.borrow().body_file.is_none());
+            assert_eq!(response.borrow().body, b"text");
+        });
+        fs::remove_dir_all(root).unwrap();
+    }
 }

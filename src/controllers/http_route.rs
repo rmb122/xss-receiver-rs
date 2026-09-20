@@ -152,6 +152,7 @@ pub async fn create_http_route(
         comment: request.comment,
     };
 
+    let _update_guard = ctx.http_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
 
     // 1. 先检查路由数据是否合法
@@ -182,6 +183,7 @@ pub async fn delete_http_route(
     Claims(_user): Claims<LoggedUser>,
     Json(request): Json<DeleteHttpRouteRequest>,
 ) -> Result<Response<bool>, AppError> {
+    let _update_guard = ctx.http_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
 
     // 1. 先检查路由是否存在
@@ -240,6 +242,7 @@ pub async fn update_http_route(
         comment: request.comment,
     };
 
+    let _update_guard = ctx.http_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
 
     // 1. 先检查路由是否正确

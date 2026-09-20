@@ -14,7 +14,7 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 // @ts-ignore
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import { configureBoaJavaScriptCompletions } from './boa-completion-provider'
+import { configureScriptCompletions } from './script-completion-provider'
 
 self.MonacoEnvironment = {
   getWorker(_: any, label: string) {
@@ -32,7 +32,7 @@ monaco.languages.register({
   extensions: ['.hjs', '.djs'],
 })
 
-configureBoaJavaScriptCompletions()
+configureScriptCompletions()
 
 monaco.languages.register({
   id: 'json',

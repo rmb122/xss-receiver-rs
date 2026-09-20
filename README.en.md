@@ -8,7 +8,7 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
 
 - **Programmable HTTP server**: route rules (exact or regex matching) map requests to different handlers:
   - `STATIC`: serve a static file from storage directly.
-  - `SCRIPT`: build the response dynamically with the embedded JavaScript engine ([boa](https://github.com/boa-dev/boa)).
+  - `SCRIPT`: build the response dynamically with the embedded JavaScript engine ([QuickJS-NG](https://github.com/quickjs-ng/quickjs)).
   - `NONE`: only log the request and return a default response.
 - **Programmable DNS server**: rule-based routing as well, returning static answers or dynamically constructing `A` / `AAAA` / `CNAME` / `TXT` records via scripts. Great as a DNS Log.
 - **Full request logging**: records the source, headers, query, body, uploaded files, etc. of HTTP / DNS requests, with IP geolocation powered by [ip2region](https://github.com/lionsoul2014/ip2region).
@@ -20,7 +20,7 @@ A high-performance XSS / data receiver platform written in Rust. It ships with t
 ## Tech Stack
 
 - Backend: Rust 2024 edition, [axum](https://github.com/tokio-rs/axum), [tokio](https://tokio.rs/), [diesel](https://diesel.rs/) + [diesel-async](https://github.com/weiznich/diesel_async) (PostgreSQL).
-- Script engine: [boa_engine](https://github.com/boa-dev/boa).
+- Script engine: [rquickjs](https://github.com/DelSkayn/rquickjs) + [QuickJS-NG](https://github.com/quickjs-ng/quickjs).
 - Frontend: Vue 3, Vuetify, Vite, Monaco Editor (embedded into the binary via `rust-embed`).
 - Database: PostgreSQL.
 
@@ -160,7 +160,11 @@ A `.djson` static answer file has the following structure:
 
 ## Script Engine API
 
-`SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`, static `import`, and dynamic `import()`. Use `export default value` in the entry module to write structured data to the request log's `extra_info`; omitting it stores `null`. The route's `timeout` is the overall execution limit, including asynchronous work.
+`SCRIPT` routes execute the corresponding JavaScript file as an **ES module** when a request arrives. HTTP and DNS scripts support top-level `await`, static `import`, and dynamic `import()`. Use `export default value` in the entry module to write structured data to the request log's `extra_info`; omitting it stores `null`.
+
+The route's `timeout` (milliseconds) covers synchronous JavaScript execution and asynchronous waits. QuickJS-NG periodically checks the deadline while executing JavaScript, interrupting synchronous infinite loops, including loops after `await`; a timer cancels asynchronous waits. This is not a hard real-time guarantee: synchronous Rust operations such as file I/O and native engine operations such as parsing must return or reach another interrupt check before the timeout can be handled. Timeout errors are recorded when route logging is enabled.
+
+Outbound HTTP waits resume on I/O readiness.
 
 Default exports follow `JSON.stringify` rules, including when `request.headers` is exported directly or nested in objects and arrays. Top-level values such as `undefined` that produce no JSON store `null`; cycles and `BigInt` cause serialization errors.
 

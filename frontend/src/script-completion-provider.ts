@@ -1,22 +1,25 @@
 import * as monaco from 'monaco-editor'
 import { typescript } from 'monaco-editor'
 
-// Keep this list in sync with boa_engine's default global bindings and the
-// globals registered in src/dispatcher/script_engine. The backend currently
-// uses boa_engine 0.21.1 with its default features plus annex-b.
-const BOA_RUNTIME_GLOBALS = new Set([
+// Keep this list in sync with rquickjs Context::full and the globals registered
+// in src/dispatcher/script_engine. rquickjs 0.14 uses QuickJS-NG 0.16.2.
+const SCRIPT_RUNTIME_GLOBALS = new Set([
   'AggregateError',
   'Array',
   'ArrayBuffer',
+  'AsyncDisposableStack',
   'Atomics',
   'BigInt',
   'BigInt64Array',
   'BigUint64Array',
   'Boolean',
+  'DOMException',
   'DataView',
   'Date',
+  'DisposableStack',
   'Error',
   'EvalError',
+  'FinalizationRegistry',
   'Float16Array',
   'Float32Array',
   'Float64Array',
@@ -25,6 +28,8 @@ const BOA_RUNTIME_GLOBALS = new Set([
   'Int16Array',
   'Int32Array',
   'Int8Array',
+  'InternalError',
+  'Iterator',
   'JSON',
   'Map',
   'Math',
@@ -40,10 +45,10 @@ const BOA_RUNTIME_GLOBALS = new Set([
   'Set',
   'SharedArrayBuffer',
   'String',
+  'SuppressedError',
   'Symbol',
   'SyntaxError',
   'TypeError',
-  'TypedArray',
   'URIError',
   'Uint16Array',
   'Uint32Array',
@@ -52,8 +57,10 @@ const BOA_RUNTIME_GLOBALS = new Set([
   'WeakMap',
   'WeakRef',
   'WeakSet',
+  'atob',
   'base64Decode',
   'base64Encode',
+  'btoa',
   'cache',
   'decodeURI',
   'decodeURIComponent',
@@ -67,6 +74,8 @@ const BOA_RUNTIME_GLOBALS = new Set([
   'isNaN',
   'parseFloat',
   'parseInt',
+  'performance',
+  'queueMicrotask',
   'request',
   'response',
   'storage',
@@ -116,7 +125,7 @@ interface DefinitionInfo {
   fileName: string
 }
 
-interface BoaCompletionItem extends monaco.languages.CompletionItem {
+interface ScriptCompletionItem extends monaco.languages.CompletionItem {
   uri: monaco.Uri
   position: monaco.IPosition
   offset: number
@@ -137,7 +146,7 @@ type JavaScriptWorker = Awaited<ReturnType<WorkerFactory>>
 
 let workerFactoryPromise: ReturnType<typeof typescript.getJavaScriptWorker> | undefined
 
-function isBoaScript(uri: monaco.Uri): boolean {
+function isHandlerScript(uri: monaco.Uri): boolean {
   const path = uri.path.toLowerCase()
   return path.endsWith('.hjs') || path.endsWith('.djs')
 }
@@ -146,9 +155,9 @@ function isAmbientDeclaration(entry: CompletionEntry): boolean {
   return entry.kindModifiers?.split(',').includes('declare') ?? false
 }
 
-function filterBoaGlobals(entries: CompletionEntry[]): CompletionEntry[] {
+function filterScriptGlobals(entries: CompletionEntry[]): CompletionEntry[] {
   return entries.filter(
-    (entry) => !isAmbientDeclaration(entry) || BOA_RUNTIME_GLOBALS.has(entry.name),
+    (entry) => !isAmbientDeclaration(entry) || SCRIPT_RUNTIME_GLOBALS.has(entry.name),
   )
 }
 
@@ -191,10 +200,10 @@ async function filterCompletions(
   worker: JavaScriptWorker,
   info: CompletionInfo,
 ): Promise<CompletionInfo> {
-  if (!isBoaScript(model.uri)) return info
+  if (!isHandlerScript(model.uri)) return info
 
   if (info.isGlobalCompletion) {
-    return { ...info, entries: filterBoaGlobals(info.entries) }
+    return { ...info, entries: filterScriptGlobals(info.entries) }
   }
 
   if (!info.isMemberCompletion) return info
@@ -203,10 +212,10 @@ async function filterCompletions(
   if (!root) return info
 
   if (root.name === 'globalThis') {
-    return { ...info, entries: filterBoaGlobals(info.entries) }
+    return { ...info, entries: filterScriptGlobals(info.entries) }
   }
 
-  if (BOA_RUNTIME_GLOBALS.has(root.name)) return info
+  if (SCRIPT_RUNTIME_GLOBALS.has(root.name)) return info
 
   const definitions = (await worker.getDefinitionAtPosition(model.uri.toString(), root.offset)) as
     | DefinitionInfo[]
@@ -277,7 +286,7 @@ function completionDocumentation(details: CompletionDetails): string {
   return documentation
 }
 
-export function configureBoaJavaScriptCompletions(): monaco.IDisposable {
+export function configureScriptCompletions(): monaco.IDisposable {
   const defaults = typescript.javascriptDefaults
   defaults.setModeConfiguration({
     ...defaults.modeConfiguration,
@@ -307,7 +316,7 @@ export function configureBoaJavaScriptCompletions(): monaco.IDisposable {
       const info = await filterCompletions(model, offset, worker, rawInfo)
       if (token.isCancellationRequested || model.isDisposed()) return
 
-      const suggestions: BoaCompletionItem[] = info.entries.map((entry) => {
+      const suggestions: ScriptCompletionItem[] = info.entries.map((entry) => {
         let range: monaco.IRange = wordRange
         if (entry.replacementSpan) {
           const start = model.getPositionAt(entry.replacementSpan.start)
@@ -337,7 +346,7 @@ export function configureBoaJavaScriptCompletions(): monaco.IDisposable {
     },
 
     async resolveCompletionItem(item, token) {
-      const completion = item as BoaCompletionItem
+      const completion = item as ScriptCompletionItem
       if (token.isCancellationRequested) return completion
 
       const worker = await getWorker(completion.uri)

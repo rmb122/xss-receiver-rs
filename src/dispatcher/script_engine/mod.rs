@@ -1,4 +1,3 @@
-// 模块声明
 pub mod cache;
 pub mod dns_request;
 pub mod dns_response;
@@ -6,165 +5,158 @@ mod helpers;
 pub mod http_client;
 pub mod http_request;
 pub mod http_response;
+mod module_loader;
+mod runtime;
 pub mod storage;
 pub mod utils;
 
-use crate::dispatcher::DnsRequest;
-use crate::storage::UserStorage;
-use crate::utils::parsed_request::ParsedRequest;
-#[cfg(test)]
-use boa_engine::module::IdleModuleLoader;
-use boa_engine::{
-    Context, JsError, JsNativeError, JsResult, JsValue, Module, Source,
-    builtins::promise::PromiseState,
-    job::{JobExecutor, SimpleJobExecutor},
-    module::SimpleModuleLoader,
-};
-use boa_gc::Gc;
+use crate::{dispatcher::DnsRequest, storage::UserStorage, utils::parsed_request::ParsedRequest};
 use cache::ScriptCache;
-use dns_response::DnsResponseCell;
 use http_client::ScriptHttpClient;
-use http_response::HttpResponseCell;
-use std::{cell::RefCell, path::Path, rc::Rc};
+use module_loader::StorageModuleLoader;
+use rquickjs::{AsyncContext, AsyncRuntime, Ctx, Function, Module, Object, Persistent, Value};
+pub use runtime::ScriptError;
+use std::{cell::RefCell, path::Path, rc::Rc, time::Duration};
 
 #[cfg(test)]
-pub fn create_context() -> (Context, Rc<SimpleJobExecutor>) {
-    let executor = Rc::new(SimpleJobExecutor::new());
-    let context = Context::builder()
-        .job_executor(executor.clone())
-        .module_loader(Rc::new(IdleModuleLoader))
-        .build()
-        .expect("failed to create JavaScript context");
-    (context, executor)
+pub async fn create_context() -> (AsyncRuntime, AsyncContext) {
+    let runtime = AsyncRuntime::new().unwrap();
+    let context = AsyncContext::full(&runtime).await.unwrap();
+    (runtime, context)
 }
 
-pub fn create_module_context(
-    module_root: &Path,
-) -> JsResult<(Context, Rc<SimpleJobExecutor>, Rc<SimpleModuleLoader>)> {
-    let executor = Rc::new(SimpleJobExecutor::new());
-    let module_loader = Rc::new(SimpleModuleLoader::new(module_root)?);
-    let context = Context::builder()
-        .job_executor(executor.clone())
-        .module_loader(module_loader.clone())
-        .build()?;
-    Ok((context, executor, module_loader))
+pub async fn create_module_context(
+    root: &Path,
+) -> Result<(AsyncRuntime, AsyncContext), ScriptError> {
+    let runtime = AsyncRuntime::new()?;
+    let resolver =
+        StorageModuleLoader::new(root).map_err(|error| ScriptError(error.to_string()))?;
+    let loader = StorageModuleLoader::new(root).map_err(|error| ScriptError(error.to_string()))?;
+    runtime.set_loader(resolver, loader).await;
+    let context = AsyncContext::full(&runtime).await?;
+    Ok((runtime, context))
 }
 
-async fn evaluate_parsed_module(
-    module: Module,
-    context: &mut Context,
-    executor: Rc<SimpleJobExecutor>,
-) -> JsResult<serde_json::Value> {
-    // Capture the intrinsic before running user code. Unlike JsValue::to_json,
-    // JSON.stringify traverses proxies (including nested proxies) and respects
-    // enumerability. Scripts can replace the global JSON object or its methods.
-    let stringify = context
-        .intrinsics()
-        .objects()
-        .json()
-        .get(boa_engine::js_string!("stringify"), context)?
-        .as_callable()
-        .expect("intrinsic JSON.stringify must be callable");
-    let promise = module.load_link_evaluate(context);
+async fn evaluate_module_inner(
+    source: &str,
+    name: &str,
+    context: &AsyncContext,
+) -> Result<serde_json::Value, ScriptError> {
+    let (namespace, promise, stringify) = context
+        .with(|ctx| {
+            let result = (|| -> rquickjs::Result<_> {
+                // Retain the intrinsic before user code can replace JSON.stringify.
+                let json: Object = ctx.globals().get("JSON")?;
+                let stringify: Function = json.get("stringify")?;
+                let declared = Module::declare(ctx.clone(), name, source)?;
+                let (module, promise) = declared.eval()?;
+                Ok((
+                    Persistent::save(&ctx, module.namespace()?),
+                    Persistent::save(&ctx, promise),
+                    Persistent::save(&ctx, stringify),
+                ))
+            })();
+            result.map_err(|error| ScriptError::from_js(&ctx, error))
+        })
+        .await?;
 
-    executor.run_jobs_async(&RefCell::new(context)).await?;
+    runtime::run_jobs(context.runtime()).await?;
 
-    match promise.state() {
-        PromiseState::Fulfilled(_) => {}
-        PromiseState::Rejected(error) => return Err(JsError::from_opaque(error)),
-        PromiseState::Pending => {
-            return Err(JsError::from_opaque(JsValue::from(boa_engine::js_string!(
-                "module evaluation remained pending after the job queue drained"
-            ))));
-        }
-    }
-
-    let value = module.get_value(boa_engine::js_string!("default"), context)?;
-    let serialized = stringify.call(&JsValue::undefined(), &[value], context)?;
-    let Some(serialized) = serialized.as_string() else {
-        return Ok(serde_json::Value::Null);
-    };
-    serde_json::from_str(&serialized.to_std_string_lossy()).map_err(|error| {
-        JsNativeError::error()
-            .with_message(format!(
-                "could not serialize module default export: {error}"
-            ))
-            .into()
-    })
+    context
+        .with(|ctx| {
+            let result = (|| -> rquickjs::Result<_> {
+                let promise = promise.restore(&ctx)?;
+                promise.result::<Value>().ok_or_else(|| {
+                    rquickjs::Exception::throw_message(
+                        &ctx,
+                        "module evaluation remained pending after the job queue drained",
+                    )
+                })??;
+                let namespace = namespace.restore(&ctx)?;
+                let value: Value = namespace.get("default")?;
+                let stringify = stringify.restore(&ctx)?;
+                let serialized: Value = stringify.call((value,))?;
+                match serialized.as_string() {
+                    Some(value) => Ok(Some(value.to_string()?)),
+                    None => Ok(None),
+                }
+            })();
+            let serialized = result.map_err(|error| ScriptError::from_js(&ctx, error))?;
+            match serialized {
+                Some(value) => serde_json::from_str(&value).map_err(|error| {
+                    ScriptError(format!(
+                        "could not serialize module default export: {error}"
+                    ))
+                }),
+                None => Ok(serde_json::Value::Null),
+            }
+        })
+        .await
 }
 
 #[cfg(test)]
 pub async fn evaluate_module(
     source: &str,
-    context: &mut Context,
-    executor: Rc<SimpleJobExecutor>,
-) -> JsResult<serde_json::Value> {
-    let module = Module::parse(Source::from_bytes(source.as_bytes()), None, context)?;
-    evaluate_parsed_module(module, context, executor).await
+    context: &AsyncContext,
+) -> Result<serde_json::Value, ScriptError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_ENTRY: AtomicU64 = AtomicU64::new(0);
+    let name = format!("test-{}.js", NEXT_ENTRY.fetch_add(1, Ordering::Relaxed));
+    runtime::with_timeout(
+        context,
+        Duration::from_secs(5),
+        evaluate_module_inner(source, &name, context),
+    )
+    .await
 }
 
 pub async fn evaluate_module_from_path(
     source: &str,
-    source_path: &Path,
-    context: &mut Context,
-    executor: Rc<SimpleJobExecutor>,
-    module_loader: Rc<SimpleModuleLoader>,
-) -> JsResult<serde_json::Value> {
-    let module = Module::parse(
-        Source::from_bytes(source.as_bytes()).with_path(source_path),
-        None,
+    path: &Path,
+    context: &AsyncContext,
+    timeout: Duration,
+) -> Result<serde_json::Value, ScriptError> {
+    let name = path
+        .to_str()
+        .ok_or_else(|| ScriptError("module path must be UTF-8".into()))?;
+    runtime::with_timeout(
         context,
-    )?;
-
-    // The entry module is parsed by the dispatcher instead of the loader. Register it so
-    // imports that form a cycle back to the entry resolve to the same module record.
-    module_loader.insert(source_path.to_path_buf(), module.clone());
-
-    evaluate_parsed_module(module, context, executor).await
+        timeout,
+        evaluate_module_inner(source, name, context),
+    )
+    .await
 }
 
-/// 注册所有变量到 JS 上下文的主入口函数
-///
-/// 该函数会注册以下全局对象：
-/// - request: 请求对象，包含 method, path, headers, query, body 等
-/// - response: 响应对象，包含 send, sendStatus, sendHeader 等方法
-/// - storage: 用户文件存储对象，包含 list, list_all, create_directory, write_file, append_file, delete, rename
-/// - cache: 进程内共享缓存
-/// - http: 服务端出站 HTTP 客户端
-/// - utils: 工具函数，包含 base64Encode, base64Decode, urlEncode, urlDecode
-///
-/// # 返回值
-/// 返回 ResponseCell 的 Gc 指针，用于后续获取响应数据
 pub fn register_http_vars_to_context(
-    context: &mut Context,
+    ctx: &Ctx<'_>,
     request: &ParsedRequest,
     user_storage: UserStorage,
     cache: ScriptCache,
     http_client: ScriptHttpClient,
-) -> Gc<HttpResponseCell> {
-    let response_cell = http_response::register_response_to_context(context);
-    http_request::register_http_request_to_context(context, request);
-    storage::register_storage_to_context(context, user_storage);
-    cache::register_cache_to_context(context, cache);
-    http_client::register_http_client_to_context(context, http_client);
-    utils::register_utils_to_context(context);
-    response_cell
+) -> rquickjs::Result<Rc<RefCell<http_response::HttpResponse>>> {
+    let response = http_response::register_response_to_context(ctx, user_storage.clone())?;
+    http_request::register_http_request_to_context(ctx, request)?;
+    storage::register_storage_to_context(ctx, user_storage)?;
+    cache::register_cache_to_context(ctx, cache)?;
+    http_client::register_http_client_to_context(ctx, http_client)?;
+    utils::register_utils_to_context(ctx)?;
+    Ok(response)
 }
 
 pub fn register_dns_vars_to_context(
-    context: &mut Context,
+    ctx: &Ctx<'_>,
     request: &DnsRequest,
     user_storage: UserStorage,
     cache: ScriptCache,
     http_client: ScriptHttpClient,
-) -> Gc<DnsResponseCell> {
-    let response_cell = dns_response::register_dns_response_to_context(context);
-    dns_request::register_dns_request_to_context(context, request);
-    storage::register_storage_to_context(context, user_storage);
-    cache::register_cache_to_context(context, cache);
-    http_client::register_http_client_to_context(context, http_client);
-    utils::register_utils_to_context(context);
-    response_cell
+) -> rquickjs::Result<Rc<RefCell<dns_response::ScriptDnsResponse>>> {
+    let response = dns_response::register_dns_response_to_context(ctx)?;
+    dns_request::register_dns_request_to_context(ctx, request)?;
+    storage::register_storage_to_context(ctx, user_storage)?;
+    cache::register_cache_to_context(ctx, cache)?;
+    http_client::register_http_client_to_context(ctx, http_client)?;
+    utils::register_utils_to_context(ctx)?;
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -175,7 +167,6 @@ mod tests {
         sync::atomic::{AtomicU64, Ordering},
     };
 
-    use boa_engine::{JsValue, js_string, property::Attribute};
     use serde_json::json;
 
     use super::{
@@ -218,30 +209,38 @@ mod tests {
         }
     }
 
-    fn run_module(source: &str) -> boa_engine::JsResult<serde_json::Value> {
-        let (mut context, executor) = create_context();
-        tokio::runtime::Runtime::new()
+    fn run_module(source: &str) -> Result<serde_json::Value, super::ScriptError> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap()
-            .block_on(evaluate_module(source, &mut context, executor))
+            .block_on(async {
+                let (_runtime, context) = create_context().await;
+                evaluate_module(source, &context).await
+            })
     }
 
     fn run_storage_module(
         root: &TempModuleRoot,
         entry_path: &str,
         source: &str,
-    ) -> boa_engine::JsResult<serde_json::Value> {
+    ) -> Result<serde_json::Value, super::ScriptError> {
         root.write(entry_path, source);
         let entry_path = fs::canonicalize(root.path().join(entry_path)).unwrap();
-        let (mut context, executor, module_loader) = create_module_context(root.path()).unwrap();
-        tokio::runtime::Runtime::new()
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap()
-            .block_on(evaluate_module_from_path(
-                source,
-                &entry_path,
-                &mut context,
-                executor,
-                module_loader,
-            ))
+            .block_on(async {
+                let (_runtime, context) = create_module_context(root.path()).await.unwrap();
+                evaluate_module_from_path(
+                    source,
+                    &entry_path,
+                    &context,
+                    std::time::Duration::from_secs(5),
+                )
+                .await
+            })
     }
 
     #[test]
@@ -405,25 +404,25 @@ mod tests {
         root.write("main.hjs", source);
 
         let entry_path = fs::canonicalize(root.path().join("main.hjs")).unwrap();
-        let (mut context, executor, module_loader) = create_module_context(root.path()).unwrap();
-        context
-            .register_global_property(
-                js_string!("runtimeKind"),
-                JsValue::from(js_string!("http")),
-                Attribute::READONLY,
-            )
-            .unwrap();
-
-        let value = tokio::runtime::Runtime::new()
+        let value = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
             .unwrap()
-            .block_on(evaluate_module_from_path(
-                source,
-                &entry_path,
-                &mut context,
-                executor,
-                module_loader,
-            ))
-            .unwrap();
+            .block_on(async {
+                let (_runtime, context) = create_module_context(root.path()).await.unwrap();
+                context
+                    .with(|ctx| ctx.globals().set("runtimeKind", "http"))
+                    .await
+                    .unwrap();
+                evaluate_module_from_path(
+                    source,
+                    &entry_path,
+                    &context,
+                    std::time::Duration::from_secs(5),
+                )
+                .await
+                .unwrap()
+            });
 
         assert_eq!(value, json!("http"));
     }
@@ -477,14 +476,30 @@ mod tests {
     #[test]
     fn storage_module_errors_include_resolution_and_parse_failures() {
         let root = TempModuleRoot::new();
+        let outside = TempModuleRoot::new();
+        outside.write("secret.js", "export default 42;");
+        let outside_name = outside.path().file_name().unwrap().to_str().unwrap();
 
         let traversal = run_storage_module(
             &root,
             "handlers/main.hjs",
-            "import '../../outside.js'; export default null;",
+            &format!("import '../../{outside_name}/secret.js'; export default null;"),
         )
         .unwrap_err();
         assert!(traversal.to_string().contains("outside the module root"));
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                outside.path().join("secret.js"),
+                root.path().join("escape.js"),
+            )
+            .unwrap();
+            let escape =
+                run_storage_module(&root, "main.hjs", "export { default } from './escape.js';")
+                    .unwrap_err();
+            assert!(escape.to_string().contains("outside the module root"));
+        }
 
         let missing = run_storage_module(
             &root,

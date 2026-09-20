@@ -44,8 +44,7 @@ tokio-util = { version = "0.7.15", features = ["io", "compat"] }
 axum = { version = "0.8.4", features = ["multipart"] }
 axum-extra = { version = "0.12.5", features = ["cookie"] }
 
-boa_engine = { version = "0.21.1", features = ["annex-b"] }
-boa_gc = "0.21.1"
+rquickjs = { version = "0.14.0", features = ["futures", "loader"] }
 
 diesel = { version = "2.3", features = ["serde_json", "chrono"] }
 diesel-async = { version = "0.7", features = ["postgres", "bb8", "migrations"] }

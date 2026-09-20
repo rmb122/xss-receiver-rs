@@ -140,6 +140,7 @@ pub async fn create_dns_route(
         comment: request.comment,
     };
 
+    let _update_guard = ctx.dns_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
     let new_dispatcher = compile_dns_routes(
         &mut conn,
@@ -166,6 +167,7 @@ pub async fn delete_dns_route(
     Claims(_user): Claims<LoggedUser>,
     Json(request): Json<DeleteDnsRouteRequest>,
 ) -> Result<Response<bool>, AppError> {
+    let _update_guard = ctx.dns_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
     let new_dispatcher = compile_dns_routes(
         &mut conn,
@@ -220,6 +222,7 @@ pub async fn update_dns_route(
         comment: request.comment,
     };
 
+    let _update_guard = ctx.dns_route_update_lock.lock().await;
     let mut conn = ctx.db_conn().await?;
     let new_dispatcher = compile_dns_routes(
         &mut conn,

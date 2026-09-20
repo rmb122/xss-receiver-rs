@@ -1,8 +1,7 @@
-use std::{error::Error, fmt::Display, time::Duration};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::{body::Body, http::Response};
-use boa_engine::JsError;
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
@@ -141,22 +140,7 @@ impl ScriptHttpHandler {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ScriptError(String);
-
-impl Display for ScriptError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "js running failed: {}", self.0)
-    }
-}
-
-impl Error for ScriptError {}
-
-impl From<JsError> for ScriptError {
-    fn from(value: JsError) -> Self {
-        ScriptError(value.to_string())
-    }
-}
+pub use super::script_engine::ScriptError;
 
 #[async_trait]
 impl HttpRouteHandler for ScriptHttpHandler {
@@ -164,38 +148,45 @@ impl HttpRouteHandler for ScriptHttpHandler {
         &self,
         request: ParsedRequest,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
-        // 每次运行时重新读取 script
+        // Reload the entry source for every request.
         let filename = tokio::fs::canonicalize(&self.filename).await?;
         let script = tokio::fs::read_to_string(&filename).await?;
-        let timeout = self.timeout.clone();
+        let timeout = self.timeout;
         let user_storage = self.user_storage.clone();
         let module_root = user_storage.absolute_path("")?;
         let cache = self.cache.clone();
         let http_client = self.http_client.clone();
 
-        // 在新线程中运行 js
+        // Keep JavaScript execution on a blocking worker.
         let (result, response) = task::spawn_blocking(move || {
-            let (mut context, executor, module_loader) =
-                create_module_context(module_root.as_ref())?;
-            let response = register_http_vars_to_context(
-                &mut context,
-                &request,
-                user_storage,
-                cache,
-                http_client,
-            );
-            tokio::runtime::Runtime::new()
-                .expect("create new async js runtime failed")
-                .block_on(async {
-                    tokio::select! {
-                        v = evaluate_module_from_path(&script, &filename, &mut context, executor, module_loader) => {
-                            let v = v.map_err(|err| ScriptError(err.to_string()))?;
-                            Ok((v, response.cell.borrow().clone()))
-                        },
-                        _ = tokio::time::sleep(Duration::from_millis(timeout as u64)) => Err(ScriptError("script running timeout".to_string())),
-                    }
-                })
-        }).await??;
+            // QuickJS stays on this blocking thread while native futures use
+            // the server runtime's I/O drivers and timers.
+            tokio::runtime::Handle::current().block_on(async {
+                let (_runtime, context) = create_module_context(module_root.as_ref()).await?;
+                let response = context
+                    .with(|ctx| {
+                        register_http_vars_to_context(
+                            &ctx,
+                            &request,
+                            user_storage,
+                            cache,
+                            http_client,
+                        )
+                        .map_err(|error| ScriptError::from_js(&ctx, error))
+                    })
+                    .await?;
+                let result = evaluate_module_from_path(
+                    &script,
+                    &filename,
+                    &context,
+                    Duration::from_millis(timeout.max(0) as u64),
+                )
+                .await?;
+                let response = response.borrow().clone();
+                Ok::<_, ScriptError>((result, response))
+            })
+        })
+        .await??;
 
         let mut builder = Response::builder().status(response.status_code);
 

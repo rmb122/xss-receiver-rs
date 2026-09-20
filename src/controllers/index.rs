@@ -119,7 +119,7 @@ fn process_response_headers(request_headers: &HeaderMap, mut response: Response)
     if let Some(header_value) = request_headers.get("Origin") {
         // 确定为跨域请求
         response_headers.insert(
-            "Origin".to_owned(),
+            "Access-Control-Allow-Origin".to_owned(),
             header_value.to_str().unwrap_or("").to_owned(),
         );
 
@@ -128,13 +128,13 @@ fn process_response_headers(request_headers: &HeaderMap, mut response: Response)
             "true".to_owned(),
         );
 
-        if let Some(header_value) = request_headers.get("Access-Control-Allow-Headers") {
+        if let Some(header_value) = request_headers.get("Access-Control-Request-Headers") {
             response_headers.insert(
                 "Access-Control-Allow-Headers".to_owned(),
                 header_value.to_str().unwrap_or("").to_owned(),
             );
         }
-        if let Some(header_value) = request_headers.get("Access-Control-Allow-Method") {
+        if let Some(header_value) = request_headers.get("Access-Control-Request-Method") {
             response_headers.insert(
                 "Access-Control-Allow-Methods".to_owned(),
                 header_value.to_str().unwrap_or("").to_owned(),
@@ -215,14 +215,13 @@ pub async fn index(
         addr
     };
 
-    if let Some(http_route) = {
-        // https://rustcc.cn/article?id=ab4703a7-2130-4164-be40-f7a5cd325b09
-        // 这里放到花括号里面是为了避免 guard 不穿越 .await
-        ctx.http_dispatcher
-            .read()
-            .expect("lock poisoned")
-            .dispatch_key(request.uri().path())
-    } {
+    // Release the dispatcher lock before executing the selected handler.
+    let http_route = ctx
+        .http_dispatcher
+        .read()
+        .expect("lock poisoned")
+        .dispatch_key(request.uri().path());
+    if let Some(http_route) = http_route {
         let url = request.uri().to_string();
 
         match process_http_route(&ctx, &client_addr, request, &http_route).await {
@@ -239,4 +238,81 @@ pub async fn index(
     };
 
     process_response_headers(&request_headers, get_default_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cors_actual_response_allows_the_request_origin_with_credentials() {
+        let request = Request::builder()
+            .method("POST")
+            .header("Origin", "https://example.com")
+            .body(Body::empty())
+            .unwrap();
+        let response = process_response_headers(
+            request.headers(),
+            Response::builder().status(200).body(Body::empty()).unwrap(),
+        );
+
+        assert_eq!(
+            response.headers()["Access-Control-Allow-Origin"],
+            "https://example.com"
+        );
+        assert_eq!(
+            response.headers()["Access-Control-Allow-Credentials"],
+            "true"
+        );
+        assert!(!response.headers().contains_key("Origin"));
+    }
+
+    #[test]
+    fn cors_preflight_allows_the_requested_method_and_headers() {
+        let request = Request::builder()
+            .method("OPTIONS")
+            .header("Origin", "https://example.com")
+            .header("Access-Control-Request-Method", "POST")
+            .header(
+                "Access-Control-Request-Headers",
+                "content-type, x-custom-header",
+            )
+            .body(Body::empty())
+            .unwrap();
+        let response = process_response_headers(
+            request.headers(),
+            Response::builder().status(200).body(Body::empty()).unwrap(),
+        );
+
+        assert!(response.status().is_success());
+        assert_eq!(
+            response.headers()["Access-Control-Allow-Origin"],
+            "https://example.com"
+        );
+        assert_eq!(response.headers()["Access-Control-Allow-Methods"], "POST");
+        assert_eq!(
+            response.headers()["Access-Control-Allow-Headers"],
+            "content-type, x-custom-header"
+        );
+    }
+
+    #[test]
+    fn response_without_origin_does_not_add_cors_authorization() {
+        let response = process_response_headers(&HeaderMap::new(), get_default_response());
+
+        assert!(
+            !response
+                .headers()
+                .contains_key("Access-Control-Allow-Origin")
+        );
+        assert!(
+            !response
+                .headers()
+                .contains_key("Access-Control-Allow-Credentials")
+        );
+        assert_eq!(
+            response.headers()["Cache-Control"],
+            "no-store, no-cache, must-revalidate"
+        );
+    }
 }

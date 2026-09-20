@@ -54,12 +54,12 @@ async fn process_packet(
     let query_type = query.query_type();
     let query_class = query.query_class().to_string();
 
-    let route = {
-        ctx.dns_dispatcher
-            .read()
-            .expect("lock poisoned")
-            .dispatch_key(&query_name)
-    };
+    // Release the dispatcher lock before executing the selected handler.
+    let route = ctx
+        .dns_dispatcher
+        .read()
+        .expect("lock poisoned")
+        .dispatch_key(&query_name);
 
     let Some(route) = route else {
         return Ok(());

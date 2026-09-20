@@ -1,7 +1,7 @@
 # Script engine API reference
 
 A `SCRIPT` route runs a JavaScript file when a request arrives (`.hjs` = HTTP, `.djs` = DNS).
-Scripts run in an embedded JavaScript engine; a fresh context is created per request.
+Scripts run in QuickJS-NG through rquickjs; a fresh context is created per request.
 `request` / `response` differ by scenario; `storage` / `cache` and the global helper
 functions are shared by both HTTP and DNS scripts.
 
@@ -9,7 +9,12 @@ functions are shared by both HTTP and DNS scripts.
 
 - Each `.hjs` / `.djs` file is an ES module (and therefore runs in strict mode).
 - Top-level `await` is supported.
-- The route's `timeout` (milliseconds) aborts the script when reached and logs an error.
+- The route's `timeout` (milliseconds) covers synchronous JavaScript execution and asynchronous waits.
+  The engine periodically checks the deadline, interrupting synchronous infinite loops, including
+  loops after `await`; a timer cancels asynchronous waits. This is not a hard real-time guarantee:
+  synchronous Rust operations such as file I/O and native engine operations such as parsing must
+  return or reach another interrupt check before the timeout can be handled. Timeout errors are
+  recorded when route logging is enabled.
 - The module's `export default` value is serialized to JSON and written to that request
   log's `extra_info` field. If it is omitted, `extra_info` is `null`.
 - A thrown exception is recorded in the log's `error_log` field.
@@ -225,8 +230,8 @@ response.answer(type: DnsAnswerType, value: string, ttl?: number): void  // appe
 response.rcode(code: DnsResponseCode): void                              // set the response code
 ```
 
-- The engine filters answers by the actual query type (a query for `A` returns only `A`
-  records; `ANY` returns all appended records).
+- The engine filters answers by the actual query type. Queries for `A` or `AAAA` also
+  retain `CNAME` answers; `ANY` returns all appended records.
 
 ## DNS static answer (`.djson`)
 

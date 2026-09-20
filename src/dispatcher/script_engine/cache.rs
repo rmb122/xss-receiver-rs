@@ -3,15 +3,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use boa_engine::object::builtins::JsUint8Array;
-use boa_engine::{
-    Context, JsNativeError, JsResult, JsValue, NativeFunction, js_string,
-    object::ObjectInitializer, property::Attribute,
-};
-use boa_gc::{Finalize, Gc, Trace, empty_trace};
 use moka::{
     ops::compute::{CompResult, Op},
     sync::Cache,
+};
+use rquickjs::{
+    Ctx, Exception, Function, IntoJs, Object, Result as JsResult, TypedArray, Value,
+    function::Rest, object::Property,
 };
 
 use crate::startup_config;
@@ -45,10 +43,10 @@ impl CacheError {
         }
     }
 
-    fn into_js_error(self) -> boa_engine::JsError {
+    fn into_js_error(self, ctx: &Ctx<'_>) -> rquickjs::Error {
         match self.kind {
-            CacheErrorKind::Type => JsNativeError::typ().with_message(self.message).into(),
-            CacheErrorKind::Range => JsNativeError::range().with_message(self.message).into(),
+            CacheErrorKind::Type => Exception::throw_type(ctx, &self.message),
+            CacheErrorKind::Range => Exception::throw_range(ctx, &self.message),
         }
     }
 }
@@ -221,179 +219,130 @@ impl ScriptCache {
     }
 }
 
-pub struct ScriptCacheCell {
-    cache: ScriptCache,
+fn parse_key(value: &Value<'_>, ctx: &Ctx<'_>) -> JsResult<String> {
+    ensure_exists(value.as_string(), "key must be a string", ctx)?.to_string()
 }
 
-impl Finalize for ScriptCacheCell {}
-
-// SAFETY: ScriptCache stores only Rust-owned cache data and a thread-safe Moka cache; it does
-// not contain any Boa GC-managed JavaScript values.
-unsafe impl Trace for ScriptCacheCell {
-    empty_trace!();
-}
-
-fn get_cache_from_context(ctx: &mut Context) -> JsResult<Gc<ScriptCacheCell>> {
-    ensure_exists(
-        ctx.get_data::<Gc<ScriptCacheCell>>().cloned(),
-        "failed to get cache from context",
-    )
-}
-
-fn parse_key(value: &JsValue) -> JsResult<String> {
-    Ok(ensure_exists(value.as_string(), "key must be a string")?.to_std_string_lossy())
-}
-
-fn parse_ttl(value: Option<&JsValue>) -> JsResult<Option<Duration>> {
-    let Some(value) = value else {
+fn parse_ttl(value: Option<&Value<'_>>, ctx: &Ctx<'_>) -> JsResult<Option<Duration>> {
+    let Some(value) = value.filter(|value| !value.is_undefined()) else {
         return Ok(None);
     };
-    if value.is_undefined() {
-        return Ok(None);
-    }
-
-    let ttl = ensure_exists(value.as_number(), "ttl must be a number")?;
+    let ttl = ensure_exists(value.as_number(), "ttl must be a number", ctx)?;
     if !ttl.is_finite() || ttl <= 0.0 {
-        return Err(JsNativeError::range()
-            .with_message("ttl must be a finite number greater than 0")
-            .into());
+        return Err(Exception::throw_range(
+            ctx,
+            "ttl must be a finite number greater than 0",
+        ));
     }
-    Duration::try_from_secs_f64(ttl).map(Some).map_err(|_| {
-        JsNativeError::range()
-            .with_message("ttl is out of range")
-            .into()
-    })
+    Duration::try_from_secs_f64(ttl)
+        .map(Some)
+        .map_err(|_| Exception::throw_range(ctx, "ttl is out of range"))
 }
 
-fn parse_delta(value: Option<&JsValue>) -> JsResult<f64> {
-    let Some(value) = value else {
+fn parse_delta(value: Option<&Value<'_>>, ctx: &Ctx<'_>) -> JsResult<f64> {
+    let Some(value) = value.filter(|value| !value.is_undefined()) else {
         return Ok(1.0);
     };
-    if value.is_undefined() {
-        return Ok(1.0);
-    }
-
-    let delta = ensure_exists(value.as_number(), "delta must be a number")?;
+    let delta = ensure_exists(value.as_number(), "delta must be a number", ctx)?;
     if !delta.is_finite() {
-        return Err(JsNativeError::typ()
-            .with_message("delta must be a finite number")
-            .into());
+        return Err(Exception::throw_type(ctx, "delta must be a finite number"));
     }
     Ok(delta)
 }
 
-fn js_value_to_cache_value(value: &JsValue, ctx: &mut Context) -> JsResult<CacheValue> {
+fn js_value_to_cache_value(value: &Value<'_>, ctx: &Ctx<'_>) -> JsResult<CacheValue> {
     if let Some(value) = value.as_string() {
-        return Ok(CacheValue::String(value.to_std_string_lossy()));
+        return Ok(CacheValue::String(value.to_string()?));
     }
-    if let Some(value) = value.as_boolean() {
+    if let Some(value) = value.as_bool() {
         return Ok(CacheValue::Bool(value));
     }
     if let Some(value) = value.as_number() {
         if !value.is_finite() {
-            return Err(JsNativeError::typ()
-                .with_message("number value must be finite")
-                .into());
+            return Err(Exception::throw_type(ctx, "number value must be finite"));
         }
         return Ok(CacheValue::Number(value));
     }
-    if value.as_object().is_some() {
+    if value.is_object() {
         return Ok(CacheValue::Bytes(read_data_from_uint8_array(value, ctx)?));
     }
-
-    Err(JsNativeError::typ()
-        .with_message("value must be string, boolean, number or Uint8Array")
-        .into())
+    Err(Exception::throw_type(
+        ctx,
+        "value must be string, boolean, number or Uint8Array",
+    ))
 }
 
-fn cache_value_to_js_value(value: CacheValue, ctx: &mut Context) -> JsResult<JsValue> {
+fn cache_value_to_js_value<'js>(value: CacheValue, ctx: &Ctx<'js>) -> JsResult<Value<'js>> {
     match value {
-        CacheValue::String(value) => Ok(JsValue::from(js_string!(value))),
-        CacheValue::Bool(value) => Ok(JsValue::from(value)),
-        CacheValue::Number(value) => Ok(JsValue::from(value)),
-        CacheValue::Bytes(value) => Ok(JsUint8Array::from_iter(value, ctx)?.into()),
+        CacheValue::String(value) => value.into_js(ctx),
+        CacheValue::Bool(value) => value.into_js(ctx),
+        CacheValue::Number(value) => value.into_js(ctx),
+        CacheValue::Bytes(value) => Ok(TypedArray::new(ctx.clone(), value)?.into_value()),
     }
 }
 
-pub fn register_cache_to_context(context: &mut Context, cache: ScriptCache) {
-    let data = Gc::new(ScriptCacheCell { cache });
-    context.insert_data(data);
+pub fn register_cache_to_context<'js>(ctx: &Ctx<'js>, cache: ScriptCache) -> JsResult<()> {
+    let object = Object::new(ctx.clone())?;
 
-    let mut object_builder = ObjectInitializer::new(context);
-
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 2)?;
-            let key = parse_key(&args[0])?;
-            let value = js_value_to_cache_value(&args[1], ctx)?;
-            let ttl = parse_ttl(args.get(2))?;
-
-            get_cache_from_context(ctx)?
-                .cache
+    let shared = cache.clone();
+    object.set(
+        "set",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 2, &ctx)?;
+            let key = parse_key(&args[0], &ctx)?;
+            let value = js_value_to_cache_value(&args[1], &ctx)?;
+            let ttl = parse_ttl(args.get(2), &ctx)?;
+            shared
                 .set(key, value, ttl)
-                .map_err(CacheError::into_js_error)?;
-            Ok(JsValue::undefined())
-        }),
-        js_string!("set"),
-        3,
-    );
+                .map_err(|error| error.into_js_error(&ctx))
+        })?,
+    )?;
 
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-            let key = parse_key(&args[0])?;
-
-            match get_cache_from_context(ctx)?.cache.get(&key) {
-                Some(value) => cache_value_to_js_value(value, ctx),
-                None => Ok(JsValue::undefined()),
+    let shared = cache.clone();
+    object.set(
+        "get",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let key = parse_key(&args[0], &ctx)?;
+            match shared.get(&key) {
+                Some(value) => cache_value_to_js_value(value, &ctx),
+                None => Ok(Value::new_undefined(ctx)),
             }
-        }),
-        js_string!("get"),
-        1,
-    );
+        })?,
+    )?;
 
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-            let key = parse_key(&args[0])?;
-            let deleted = get_cache_from_context(ctx)?.cache.delete(&key);
-            Ok(JsValue::from(deleted))
-        }),
-        js_string!("delete"),
-        1,
-    );
+    let shared = cache.clone();
+    object.set(
+        "delete",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let key = parse_key(&args[0], &ctx)?;
+            Ok::<_, rquickjs::Error>(shared.delete(&key))
+        })?,
+    )?;
 
-    object_builder.function(
-        NativeFunction::from_copy_closure(move |_this, args, ctx| {
-            check_argument_count(args, 1)?;
-            let key = parse_key(&args[0])?;
-            let delta = parse_delta(args.get(1))?;
-            let ttl = parse_ttl(args.get(2))?;
-            let value = get_cache_from_context(ctx)?
-                .cache
+    object.set(
+        "incr",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let key = parse_key(&args[0], &ctx)?;
+            let delta = parse_delta(args.get(1), &ctx)?;
+            let ttl = parse_ttl(args.get(2), &ctx)?;
+            cache
                 .incr(key, delta, ttl)
-                .map_err(CacheError::into_js_error)?;
-            Ok(JsValue::from(value))
-        }),
-        js_string!("incr"),
-        3,
-    );
-
-    let object = object_builder.build();
-    context
-        .register_global_property(
-            js_string!("cache"),
-            object,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .expect("cache property shouldn't exist");
+                .map_err(|error| error.into_js_error(&ctx))
+        })?,
+    )?;
+    ctx.globals()
+        .prop("cache", Property::from(object).enumerable())?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, thread, time::Duration};
 
-    use boa_engine::{Context, Source};
+    use rquickjs::{Context, Runtime};
 
     use super::{CacheValue, ScriptCache, register_cache_to_context};
 
@@ -487,33 +436,32 @@ mod tests {
     #[test]
     fn js_contexts_share_cache() {
         let cache = test_cache(10, 100, 60);
-        let mut http_context = Context::default();
-        let mut dns_context = Context::default();
-        register_cache_to_context(&mut http_context, cache.clone());
-        register_cache_to_context(&mut dns_context, cache);
+        let runtime = Runtime::new().unwrap();
+        let http_context = Context::full(&runtime).unwrap();
+        let dns_context = Context::full(&runtime).unwrap();
+        http_context
+            .with(|ctx| register_cache_to_context(&ctx, cache.clone()))
+            .unwrap();
+        dns_context
+            .with(|ctx| register_cache_to_context(&ctx, cache))
+            .unwrap();
 
         let result = http_context
-            .eval(Source::from_bytes(
-                r#"cache.set("x", 1, 10); cache.get("x");"#,
-            ))
+            .with(|ctx| ctx.eval::<f64, _>(r#"cache.set("x", 1, 10); cache.get("x");"#))
             .unwrap();
-        assert_eq!(result.as_number(), Some(1.0));
-
+        assert_eq!(result, 1.0);
         let result = dns_context
-            .eval(Source::from_bytes(r#"cache.incr("x", 2, 10);"#))
+            .with(|ctx| ctx.eval::<f64, _>(r#"cache.incr("x", 2, 10);"#))
             .unwrap();
-        assert_eq!(result.as_number(), Some(3.0));
-
+        assert_eq!(result, 3.0);
         http_context
-            .eval(Source::from_bytes(
-                r#"cache.set("bytes", new Uint8Array([1, 2, 3]), 10);"#,
-            ))
+            .with(|ctx| ctx.eval::<(), _>(r#"cache.set("bytes", new Uint8Array([1, 2, 3]), 10);"#))
             .unwrap();
         let result = dns_context
-            .eval(Source::from_bytes(
-                r#"const bytes = cache.get("bytes"); bytes[0] + bytes.length;"#,
-            ))
+            .with(|ctx| {
+                ctx.eval::<f64, _>(r#"const bytes = cache.get("bytes"); bytes[0] + bytes.length;"#)
+            })
             .unwrap();
-        assert_eq!(result.as_number(), Some(4.0));
+        assert_eq!(result, 4.0);
     }
 }

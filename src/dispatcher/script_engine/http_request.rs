@@ -1,328 +1,220 @@
-use boa_engine::object::builtins::{AlignedVec, JsArray, JsArrayBuffer, JsProxy, JsUint8Array};
-use boa_engine::{
-    Context, JsNativeError, JsObject, NativeFunction, js_string,
-    object::{IntegrityLevel, ObjectInitializer},
-    property::Attribute,
-};
-use boa_engine::{JsResult, JsValue};
+use rquickjs::{Array, Ctx, Exception, Function, Object, Result, TypedArray, Value};
+use rquickjs::{function::This, object::Property};
 use std::collections::BTreeSet;
 
 use crate::utils::multimap::MultiMap;
 use crate::utils::parsed_request::{ParsedRequest, ParsedRequestBody, normalize_header_name};
 
-use super::helpers::{check_argument_count, ensure_exists, json_value_to_js_value};
+use super::helpers::json_value_to_js_value;
 
-/// Freeze the request data before exposing it to JavaScript. All input objects are
-/// acyclic; binary buffers intentionally retain the normal writable Uint8Array API.
-fn freeze_request_value(value: &JsValue, ctx: &mut Context) -> JsResult<()> {
-    let Some(object) = value.as_object() else {
-        return Ok(());
-    };
-    if object.is_callable() || JsUint8Array::from_object(object.clone()).is_ok() {
-        return Ok(());
-    }
-
-    for key in object.own_property_keys(ctx)? {
-        freeze_request_value(&object.get(key, ctx)?, ctx)?;
-    }
-    if !object.set_integrity_level(IntegrityLevel::Frozen, ctx)? {
-        return Err(JsNativeError::typ()
-            .with_message("could not freeze request data")
-            .into());
-    }
-    Ok(())
+/// Read the first value of a multimap entry without coercing the lookup key.
+fn multimap_get<'js>(
+    ctx: Ctx<'js>,
+    This(object): This<Object<'js>>,
+    key: Value<'js>,
+) -> Result<Value<'js>> {
+    let key = key
+        .as_string()
+        .ok_or_else(|| Exception::throw_type(&ctx, "key must be string"))?
+        .to_string()?;
+    first_map_value(&ctx, &object, &key)
 }
 
-/// `get(key)` method for multimap-style JS objects.
-/// Reads `this[key]` and returns the first element of the array, or undefined.
-fn multimap_get_fn(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
-    check_argument_count(args, 1)?;
-    let key = ensure_exists(args[0].as_string(), "key must be string")?;
-    let this_obj = ensure_exists(this.as_object(), "this must be an object")?;
-    let prop = this_obj.get(key.clone(), ctx)?;
-
-    if let Some(arr_obj) = prop.as_object() {
-        arr_obj.get(0u32, ctx)
-    } else {
-        Ok(JsValue::undefined())
+fn first_map_value<'js>(ctx: &Ctx<'js>, object: &Object<'js>, key: &str) -> Result<Value<'js>> {
+    let values: Value = object.get(key)?;
+    match values.as_object() {
+        Some(values) => values.get(0),
+        None => Ok(Value::new_undefined(ctx.clone())),
     }
 }
 
-/// 创建 MultiMap 的 JS 对象 + 数组结构（用于 headers、query、form）
-///
-/// 结果结构：
-/// ```js
-/// {
-///     "key1": ["val1", "val2"],
-///     "key2": ["val3"],
-///     get: function(key) { return this[key]?.[0] }
-/// }
-/// ```
-fn create_multimap_object(
-    context: &mut Context,
+fn headers_get<'js>(
+    ctx: Ctx<'js>,
+    This(object): This<Object<'js>>,
+    key: Value<'js>,
+) -> Result<Value<'js>> {
+    let key = key
+        .as_string()
+        .ok_or_else(|| Exception::throw_type(&ctx, "key must be string"))?
+        .to_string()?;
+    // The exact name "get" is reserved for the method. The proxy normalizes
+    // every other property name, including "Get", once.
+    first_map_value(&ctx, &object, if key == "get" { "Get" } else { &key })
+}
+
+fn create_multimap_object<'js>(
+    ctx: &Ctx<'js>,
     multimap: &MultiMap<String, String>,
-    get_fn: NativeFunction,
-) -> JsResult<JsObject> {
-    // 创建带有 get 方法的对象
-    let obj = ObjectInitializer::new(context)
-        .function(get_fn, js_string!("get"), 1)
-        .build();
-
-    // 遍历所有唯一 key，为每个 key 创建值数组
-    let keys: BTreeSet<&String> = multimap.iter().map(|(k, _)| k).collect();
+    get: Function<'js>,
+) -> Result<Object<'js>> {
+    let object = Object::new(ctx.clone())?;
+    object.prop("get", Property::from(get).writable().configurable())?;
+    let keys: BTreeSet<&String> = multimap.iter().map(|(key, _)| key).collect();
     for key in keys {
         if let Some(values) = multimap.get_all(key) {
-            let js_array = JsArray::new(context);
-            for (i, value) in values.iter().enumerate() {
-                js_array.set(i, JsValue::from(js_string!(value.as_str())), false, context)?;
+            let array = Array::new(ctx.clone())?;
+            for (index, value) in values.iter().enumerate() {
+                array.set(index, value.as_str())?;
             }
-            obj.create_data_property_or_throw(js_string!(key.as_str()), js_array, context)?;
+            // Defining an own property also handles names such as "__proto__".
+            object.prop(
+                key.as_str(),
+                Property::from(array).writable().configurable().enumerable(),
+            )?;
         }
     }
-
-    Ok(obj)
+    Ok(object)
 }
 
-fn headers_get_fn(this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
-    // Let the proxy normalize the lookup once. Only disambiguate the exact name
-    // "get", which is reserved for the method rather than the "Get" header.
-    if args.first().and_then(JsValue::as_string) == Some(js_string!("get")) {
-        return multimap_get_fn(this, &[js_string!("Get").into()], ctx);
-    }
-    multimap_get_fn(this, args, ctx)
-}
-
-fn headers_proxy_get(_this: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
-    let target = ensure_exists(args[0].as_object(), "headers target must be an object")?;
-    let Some(name) = args[1].as_string() else {
-        return target.get(args[1].to_property_key(ctx)?, ctx);
-    };
-    let key = if name == js_string!("get") {
-        name.clone()
-    } else {
-        js_string!(normalize_header_name(&name.to_std_string_lossy()))
-    };
-
-    // Inherited properties such as __proto__ are not request headers.
-    if target.has_own_property(key.clone(), ctx)? {
-        target.get(key, ctx)
-    } else {
-        Ok(JsValue::undefined())
-    }
-}
-
-fn create_headers_object(
-    context: &mut Context,
+fn create_headers_object<'js>(
+    ctx: &Ctx<'js>,
     headers: &MultiMap<String, String>,
-) -> JsResult<JsObject> {
-    // ParsedRequest already normalized and grouped the incoming header names.
-    let target = create_multimap_object(
-        context,
-        headers,
-        NativeFunction::from_fn_ptr(headers_get_fn),
+) -> Result<Object<'js>> {
+    let target = create_multimap_object(ctx, headers, Function::new(ctx.clone(), headers_get)?)?;
+    let normalize = Function::new(ctx.clone(), |name: String| normalize_header_name(&name))?;
+    // Capture the intrinsics before running user code. Header names are folded
+    // by the same Rust function that groups incoming request headers.
+    let create_proxy: Function = ctx.eval(
+        r#"(target, normalize) => {
+            const hasOwn = Object.hasOwn;
+            const get = Reflect.get;
+            return new Proxy(target, {
+                get(target, name) {
+                    if (typeof name !== 'string') return get(target, name);
+                    const key = name === 'get' ? name : normalize(name);
+                    return hasOwn(target, key) ? get(target, key) : undefined;
+                }
+            });
+        }"#,
     )?;
-
-    Ok(JsProxy::builder(target)
-        .get(headers_proxy_get)
-        .build(context)
-        .into())
+    create_proxy.call((target, normalize))
 }
 
-/// 创建文件对象 { filename: String, content: Uint8Array }
-fn create_file_object(filename: &str, content: &[u8], ctx: &mut Context) -> JsResult<JsObject> {
-    // 创建 Uint8Array（使用安全 API）
-    let mut aligned_vec: AlignedVec<u8> = AlignedVec::new(64);
-    aligned_vec.extend_from_slice(content);
-    let array_buffer = JsArrayBuffer::from_byte_block(aligned_vec, ctx)?;
-    let uint8_array = JsUint8Array::from_array_buffer(array_buffer, ctx)?;
-
-    // 创建文件对象
-    let file_obj = JsObject::with_null_proto();
-    file_obj.set(
-        js_string!("filename"),
-        JsValue::from(js_string!(filename)),
-        false,
-        ctx,
-    )?;
-    file_obj.set(js_string!("content"), uint8_array, false, ctx)?;
-
-    Ok(file_obj)
+fn create_file_object<'js>(filename: &str, content: &[u8], ctx: &Ctx<'js>) -> Result<Object<'js>> {
+    let object = Object::new_proto(ctx.clone(), None)?;
+    object.set("filename", filename)?;
+    object.set("content", TypedArray::new_copy(ctx.clone(), content)?)?;
+    Ok(object)
 }
 
-/// 创建上传文件的 JS 对象 + 数组结构（用于 files）
-///
-/// 结果结构：
-/// ```js
-/// {
-///     "avatar": [{ filename: "photo.jpg", content: Uint8Array }],
-///     get: function(name) { return this[name]?.[0] }
-/// }
-/// ```
-fn create_upload_files_object(
-    context: &mut Context,
+fn create_upload_files_object<'js>(
+    ctx: &Ctx<'js>,
     files: &MultiMap<String, (String, Vec<u8>)>,
-) -> JsResult<JsObject> {
-    // 创建带有 get 方法的对象
-    let obj = ObjectInitializer::new(context)
-        .function(
-            NativeFunction::from_fn_ptr(multimap_get_fn),
-            js_string!("get"),
-            1,
-        )
-        .build();
-
-    // 遍历所有唯一 key，为每个 key 创建文件对象数组
-    let keys: BTreeSet<&String> = files.iter().map(|(k, _)| k).collect();
+) -> Result<Object<'js>> {
+    let object = Object::new(ctx.clone())?;
+    object.prop(
+        "get",
+        Property::from(Function::new(ctx.clone(), multimap_get)?)
+            .writable()
+            .configurable(),
+    )?;
+    let keys: BTreeSet<&String> = files.iter().map(|(key, _)| key).collect();
     for key in keys {
-        if let Some(file_list) = files.get_all(key) {
-            let js_array = JsArray::new(context);
-            for (i, (filename, content)) in file_list.iter().enumerate() {
-                let file_obj = create_file_object(filename, content, context)?;
-                js_array.set(i, file_obj, false, context)?;
+        if let Some(files) = files.get_all(key) {
+            let array = Array::new(ctx.clone())?;
+            for (index, (filename, content)) in files.iter().enumerate() {
+                array.set(index, create_file_object(filename, content, ctx)?)?;
             }
-            obj.create_data_property_or_throw(js_string!(key.as_str()), js_array, context)?;
+            object.prop(
+                key.as_str(),
+                Property::from(array).writable().configurable().enumerable(),
+            )?;
         }
     }
-
-    Ok(obj)
+    Ok(object)
 }
 
-/// 注册 Request 对象到 JS 上下文
-pub fn register_http_request_to_context(context: &mut Context, request: &ParsedRequest) {
-    // 创建 body 的 Uint8Array
-    let mut aligned_vec: AlignedVec<u8> = AlignedVec::new(64);
-    aligned_vec.extend_from_slice(&request.raw_body);
-    let array_buffer = JsArrayBuffer::from_byte_block(aligned_vec, context)
-        .expect("failed to create array buffer");
-    let uint8_array = JsUint8Array::from_array_buffer(array_buffer, context)
-        .expect("failed to create uint8 array");
-
-    let headers_obj =
-        create_headers_object(context, &request.headers).expect("failed to create headers object");
-    let query_obj = create_multimap_object(
-        context,
-        &request.parsed_query,
-        NativeFunction::from_fn_ptr(multimap_get_fn),
-    )
-    .expect("failed to create query object");
-
-    // 处理 parsed_body — 始终创建 json, form, files 属性
+pub fn register_http_request_to_context<'js>(
+    ctx: &Ctx<'js>,
+    request: &ParsedRequest,
+) -> Result<()> {
     let empty_form = MultiMap::new();
     let empty_files = MultiMap::new();
-
-    let (json_value, form_data, files_data) = match &request.parsed_body {
-        ParsedRequestBody::Json(json_value) => (
-            json_value_to_js_value(json_value, context).expect("failed to create json value"),
+    let (json, forms, files) = match &request.parsed_body {
+        ParsedRequestBody::Json(value) => (
+            json_value_to_js_value(value, ctx)?,
             &empty_form,
             &empty_files,
         ),
-        ParsedRequestBody::Form(form, files) => {
-            (JsValue::from(JsObject::with_null_proto()), form, files)
-        }
+        ParsedRequestBody::Form(forms, files) => (
+            Object::new_proto(ctx.clone(), None)?.into_value(),
+            forms,
+            files,
+        ),
         ParsedRequestBody::None | ParsedRequestBody::Failed => (
-            JsValue::from(JsObject::with_null_proto()),
+            Object::new_proto(ctx.clone(), None)?.into_value(),
             &empty_form,
             &empty_files,
         ),
     };
-
-    let forms_obj = create_multimap_object(
-        context,
-        form_data,
-        NativeFunction::from_fn_ptr(multimap_get_fn),
-    )
-    .expect("failed to create form object");
-    let files_obj =
-        create_upload_files_object(context, files_data).expect("failed to create files object");
-
-    // 创建 request 对象
-    let mut object_builder = ObjectInitializer::new(context);
-
-    // 基础属性（只读）
-    object_builder
-        .property(
-            js_string!("method"),
-            JsValue::from(js_string!(request.method.as_str())),
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("path"),
-            JsValue::from(js_string!(request.path.as_str())),
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("clientAddr"),
-            JsValue::from(js_string!(request.client_addr.to_string().as_str())),
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("body"),
-            uint8_array,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("headers"),
-            headers_obj,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("query"),
-            query_obj,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("json"),
-            json_value,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("forms"),
-            forms_obj,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .property(
-            js_string!("files"),
-            files_obj,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        );
-
-    let object = object_builder.build();
-    freeze_request_value(&object.clone().into(), context).expect("failed to freeze request data");
-    context
-        .register_global_property(
-            js_string!("request"),
-            object,
-            Attribute::READONLY | Attribute::ENUMERABLE,
-        )
-        .expect("property shouldn't exist");
+    let object = Object::new(ctx.clone())?;
+    object.set("method", request.method.as_str())?;
+    object.set("path", request.path.as_str())?;
+    object.set("clientAddr", request.client_addr.to_string())?;
+    object.set(
+        "body",
+        TypedArray::new_copy(ctx.clone(), &request.raw_body)?,
+    )?;
+    object.set("headers", create_headers_object(ctx, &request.headers)?)?;
+    object.set(
+        "query",
+        create_multimap_object(
+            ctx,
+            &request.parsed_query,
+            Function::new(ctx.clone(), multimap_get)?,
+        )?,
+    )?;
+    object.set("json", json)?;
+    object.set(
+        "forms",
+        create_multimap_object(ctx, forms, Function::new(ctx.clone(), multimap_get)?)?,
+    )?;
+    object.set("files", create_upload_files_object(ctx, files)?)?;
+    // Request data is acyclic. The buffer properties are fixed, while their
+    // bytes intentionally retain the normal writable Uint8Array API.
+    let freeze: Function = ctx.eval(
+        r#"(function freeze(value) {
+            if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return;
+            for (const key of Reflect.ownKeys(value)) freeze(value[key]);
+            Object.freeze(value);
+        })"#,
+    )?;
+    freeze.call::<_, ()>((object.clone(),))?;
+    ctx.globals()
+        .prop("request", Property::from(object).enumerable())
 }
 
 #[cfg(test)]
 mod tests {
     use axum::{body::Body, http::Request};
-    use boa_engine::Source;
     use serde_json::json;
 
     use super::*;
     use crate::dispatcher::script_engine::{create_context, evaluate_module};
 
     async fn evaluate_request_module(request: &ParsedRequest, source: &str) -> serde_json::Value {
-        let (mut context, executor) = create_context();
-        register_http_request_to_context(&mut context, request);
-        evaluate_module(source, &mut context, executor)
-            .await
-            .unwrap()
+        let (_runtime, context) = create_context().await;
+        context
+            .with(|ctx| register_http_request_to_context(&ctx, request).unwrap())
+            .await;
+        evaluate_module(source, &context).await.unwrap()
     }
 
-    fn evaluate_request(request: &ParsedRequest, source: &str) -> serde_json::Value {
-        let (mut context, _) = create_context();
-        register_http_request_to_context(&mut context, request);
+    async fn evaluate_request(request: &ParsedRequest, source: &str) -> serde_json::Value {
+        let (_runtime, context) = create_context().await;
         context
-            .eval(Source::from_bytes(source))
-            .unwrap()
-            .to_json(&mut context)
-            .unwrap()
-            .unwrap()
+            .with(|ctx| {
+                register_http_request_to_context(&ctx, request).unwrap();
+                let value: Value = ctx.eval(source).unwrap();
+                let json = ctx
+                    .json_stringify(value)
+                    .unwrap()
+                    .unwrap()
+                    .to_string()
+                    .unwrap();
+                serde_json::from_str(&json).unwrap()
+            })
+            .await
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -364,7 +256,8 @@ mod tests {
                         && request.forms.get('TOKEN') === undefined,
                 });
             "#,
-        );
+        )
+        .await;
 
         assert_eq!(
             result,
@@ -420,7 +313,8 @@ mod tests {
                     serialized: JSON.parse(JSON.stringify(h)),
                 });
             "#,
-        );
+        )
+        .await;
 
         assert_eq!(
             result,
@@ -466,7 +360,8 @@ mod tests {
                         }),
                     });
                 "#,
-            ),
+            )
+            .await,
             json!({
                 "empty": true,
                 "missing": true,

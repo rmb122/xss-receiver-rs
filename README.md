@@ -8,7 +8,7 @@
 
 - **可编程的 HTTP 服务端**：通过路由规则（精确匹配 / 正则匹配）将请求映射到不同的处理器：
   - `STATIC`：直接返回存储中的静态文件。
-  - `SCRIPT`：使用内置 JavaScript 引擎（[boa](https://github.com/boa-dev/boa)）动态生成响应。
+  - `SCRIPT`: 使用内置 JavaScript 引擎 ([QuickJS-NG](https://github.com/quickjs-ng/quickjs)) 动态生成响应.
   - `NONE`：仅记录请求，返回默认响应。
 - **可编程的 DNS 服务端**：同样支持基于规则的路由，可静态返回应答或通过脚本动态构造 `A` / `AAAA` / `CNAME` / `TXT` 等记录，可用作 DNS Log。
 - **完整的请求日志**：记录 HTTP / DNS 请求的来源、Header、Query、Body、上传文件等，并通过 [ip2region](https://github.com/lionsoul2014/ip2region) 进行 IP 归属地解析。
@@ -20,7 +20,7 @@
 ## 技术栈
 
 - 后端：Rust 2024 edition、[axum](https://github.com/tokio-rs/axum)、[tokio](https://tokio.rs/)、[diesel](https://diesel.rs/) + [diesel-async](https://github.com/weiznich/diesel_async)（PostgreSQL）。
-- 脚本引擎：[boa_engine](https://github.com/boa-dev/boa)。
+- 脚本引擎: [rquickjs](https://github.com/DelSkayn/rquickjs) + [QuickJS-NG](https://github.com/quickjs-ng/quickjs).
 - 前端：Vue 3、Vuetify、Vite、Monaco Editor（通过 `rust-embed` 内嵌进二进制）。
 - 数据库：PostgreSQL。
 
@@ -160,7 +160,11 @@ curl -s -G -b cookies.txt "$BASE/http_log" \
 
 ## 脚本引擎 API
 
-`SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行。HTTP 与 DNS 脚本均支持顶层 `await`、静态 `import` 和动态 `import()`；使用 `export default value` 将入口模块的结构化数据写入请求日志的 `extra_info`，未导出时写入 `null`。路由的 `timeout` 是包括异步操作在内的总执行时限。
+`SCRIPT` 类型的路由会在请求到来时将对应 JavaScript 文件作为 **ES 模块**执行. HTTP 与 DNS 脚本均支持顶层 `await`, 静态 `import` 和动态 `import()`; 使用 `export default value` 将入口模块的结构化数据写入请求日志的 `extra_info`, 未导出时写入 `null`.
+
+路由的 `timeout` (毫秒) 同时限制同步 JavaScript 计算和异步等待. QuickJS-NG 在执行 JavaScript 时定期检查截止时间, 因此同步死循环和 `await` 后的死循环也会被中断; 异步等待由计时器取消. 这不是严格的实时保证: 正在执行的同步 Rust 操作 (例如文件 I/O) 和解析等引擎原生操作需要先返回或到达下一次中断检查, 才能处理超时. 启用路由日志时会记录超时错误.
+
+等待出站 HTTP 时, 执行器由 I/O 就绪事件唤醒.
 
 默认导出按 `JSON.stringify` 规则序列化，支持直接导出 `request.headers` 或将其嵌套在对象、数组中。不可序列化的顶层值（如 `undefined`）写入 `null`；循环引用和 `BigInt` 会报错。
 

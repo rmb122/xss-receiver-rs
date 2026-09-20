@@ -5,6 +5,7 @@ use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 
 use jsonwebtoken::Algorithm;
 use log::error;
+use tokio::sync::Mutex;
 use utoipa::openapi::Server;
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_swagger_ui::{Config, SwaggerUi};
@@ -42,6 +43,10 @@ pub struct Context {
     pub(crate) storage: Arc<Storage>,
     pub(crate) script_cache: ScriptCache,
     pub(crate) script_http_client: ScriptHttpClient,
+
+    // Serialize database updates while requests keep using the current dispatchers.
+    http_route_update_lock: Arc<Mutex<()>>,
+    dns_route_update_lock: Arc<Mutex<()>>,
 }
 
 impl Context {
@@ -118,6 +123,9 @@ impl Context {
             storage: Arc::new(storage),
             script_cache,
             script_http_client,
+
+            http_route_update_lock: Arc::new(Mutex::new(())),
+            dns_route_update_lock: Arc::new(Mutex::new(())),
         })
     }
 
@@ -247,5 +255,229 @@ where
 {
     fn from(err: E) -> Self {
         Self(err.into())
+    }
+}
+
+#[cfg(test)]
+mod route_update_tests {
+    use axum::{Json, extract::State};
+    use diesel_async::{AsyncConnection, AsyncPgConnection, SimpleAsyncConnection};
+    use futures::future::join_all;
+    use serde_json::{Value, json};
+
+    use super::{Context, dns_route, http_route, user::LoggedUser};
+    use crate::{db, utils::jwt::Claims};
+
+    #[derive(Clone, Copy, Debug)]
+    enum Protocol {
+        Http,
+        Dns,
+    }
+
+    async fn mutate(
+        ctx: &Context,
+        protocol: Protocol,
+        method: &str,
+        body: Value,
+    ) -> anyhow::Result<Value> {
+        macro_rules! call {
+            ($handler:path) => {
+                serde_json::to_value(
+                    $handler(
+                        State(ctx.clone()),
+                        Claims(LoggedUser {
+                            id: 1,
+                            username: "route-test".into(),
+                        }),
+                        Json(serde_json::from_value(body)?),
+                    )
+                    .await
+                    .map_err(|error| error.0)?,
+                )?
+            };
+        }
+
+        let response = match (protocol, method) {
+            (Protocol::Http, "create") => call!(http_route::create_http_route),
+            (Protocol::Http, "update") => call!(http_route::update_http_route),
+            (Protocol::Http, "delete") => call!(http_route::delete_http_route),
+            (Protocol::Dns, "create") => call!(dns_route::create_dns_route),
+            (Protocol::Dns, "update") => call!(dns_route::update_dns_route),
+            (Protocol::Dns, "delete") => call!(dns_route::delete_dns_route),
+            _ => anyhow::bail!("unsupported test mutation"),
+        };
+        Ok(response["payload"].clone())
+    }
+
+    fn route_body(pattern: &str, priority: i32, id: i32) -> Value {
+        json!({
+            "pattern_kind": "PLAIN",
+            "pattern": pattern,
+            "priority": priority,
+            "timeout": 100,
+            "catalog": "",
+            "handler_kind": "NONE",
+            "handler": "",
+            "write_log": false,
+            "comment": "",
+            "http_route_id": id,
+            "route_id": id,
+        })
+    }
+
+    async fn verify_dispatcher(
+        ctx: &Context,
+        protocol: Protocol,
+        candidates: &[String],
+    ) -> anyhow::Result<()> {
+        let mut conn = ctx.db_conn().await?;
+        let routes: Vec<(String, i32)> = match protocol {
+            Protocol::Http => db::http_route::helper::get_all_http_routes(&mut conn)
+                .await?
+                .into_iter()
+                .map(|route| (route.pattern, route.priority))
+                .collect(),
+            Protocol::Dns => db::dns_route::helper::get_all_dns_routes(&mut conn)
+                .await?
+                .into_iter()
+                .map(|route| (route.pattern, route.priority))
+                .collect(),
+        };
+        drop(conn);
+        anyhow::ensure!(routes.len() == 4, "unexpected database route count");
+        for candidate in candidates {
+            let expected = routes
+                .iter()
+                .find(|(pattern, _)| pattern == candidate)
+                .map(|(_, priority)| *priority);
+            let actual = match protocol {
+                Protocol::Http => ctx
+                    .http_dispatcher
+                    .read()
+                    .expect("lock poisoned")
+                    .dispatch_key(candidate)
+                    .map(|route| route.priority),
+                Protocol::Dns => ctx
+                    .dns_dispatcher
+                    .read()
+                    .expect("lock poisoned")
+                    .dispatch_key(candidate)
+                    .map(|route| route.priority),
+            };
+            anyhow::ensure!(
+                actual == expected,
+                "{protocol:?} dispatcher differs from database for {candidate}: {actual:?} != {expected:?}"
+            );
+        }
+        Ok(())
+    }
+
+    async fn exercise_concurrent_mutations(
+        ctx: &Context,
+        protocol: Protocol,
+    ) -> anyhow::Result<()> {
+        let mut candidates = (0..4)
+            .map(|index| format!("route{index}.example"))
+            .collect::<Vec<_>>();
+        let created = join_all(
+            candidates
+                .iter()
+                .map(|pattern| mutate(ctx, protocol, "create", route_body(pattern, 0, 0))),
+        )
+        .await
+        .into_iter()
+        .collect::<anyhow::Result<Vec<_>>>()?;
+        verify_dispatcher(ctx, protocol, &candidates).await?;
+
+        let mut mutations = Vec::new();
+        for (index, route) in created.iter().enumerate() {
+            let id = route["id"].as_i64().unwrap() as i32;
+            if index % 2 == 0 {
+                let pattern = format!("updated{index}.example");
+                mutations.push(("update", route_body(&pattern, 10, id)));
+                candidates.push(pattern);
+            } else {
+                mutations.push(("delete", route_body("", 0, id)));
+                let pattern = format!("new{index}.example");
+                mutations.push(("create", route_body(&pattern, 20, 0)));
+                candidates.push(pattern);
+            }
+        }
+        for result in join_all(
+            mutations
+                .into_iter()
+                .map(|(method, body)| mutate(ctx, protocol, method, body)),
+        )
+        .await
+        {
+            result?;
+        }
+        verify_dispatcher(ctx, protocol, &candidates).await
+    }
+
+    // Run with TEST_DATABASE_URL=postgres://... cargo test concurrent_route_updates -- --ignored
+    // The database user needs CREATE SCHEMA permission. All data lives in a temporary schema.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires PostgreSQL via TEST_DATABASE_URL"]
+    async fn concurrent_route_updates_keep_dispatchers_in_sync() -> anyhow::Result<()> {
+        let database_url = std::env::var("TEST_DATABASE_URL")?;
+        let schema = format!(
+            "route_updates_{}",
+            hex::encode(crate::utils::random::get_random_bytes(8))
+        );
+        let storage_path = std::env::temp_dir().join(&schema);
+        let mut admin = AsyncPgConnection::establish(&database_url).await?;
+        admin
+            .batch_execute(&format!("CREATE SCHEMA {schema}"))
+            .await?;
+
+        let result: anyhow::Result<()> = async {
+            let mut url = url::Url::parse(&database_url)?;
+            url.query_pairs_mut()
+                .append_pair("options", &format!("-csearch_path={schema}"));
+            let pool = db::establish_db_connection(url.as_str()).await?;
+            db::run_migrations(&pool).await?;
+            {
+                let mut conn = pool.get().await?;
+                // Delay writes so unprotected handlers read overlapping old snapshots reliably.
+                conn.batch_execute(
+                    "CREATE FUNCTION delay_route_write() RETURNS trigger LANGUAGE plpgsql AS $$
+                     BEGIN
+                        PERFORM pg_sleep(0.05);
+                        IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+                        RETURN NEW;
+                     END $$;
+                     CREATE TRIGGER delay_http_write BEFORE INSERT OR UPDATE OR DELETE ON http_route
+                        FOR EACH ROW EXECUTE FUNCTION delay_route_write();
+                     CREATE TRIGGER delay_dns_write BEFORE INSERT OR UPDATE OR DELETE ON dns_route
+                        FOR EACH ROW EXECUTE FUNCTION delay_route_write();",
+                )
+                .await?;
+            }
+            let mut config =
+                crate::startup_config::parse(include_str!("../../config_example.toml"))?;
+            config.storage_path = storage_path.to_string_lossy().into_owned();
+            config.ip2region.ipv4_db.clear();
+            config.ip2region.ipv6_db.clear();
+            let ctx = Context::new(&config, pool).await?;
+            let (http, dns) = tokio::join!(
+                exercise_concurrent_mutations(&ctx, Protocol::Http),
+                exercise_concurrent_mutations(&ctx, Protocol::Dns),
+            );
+            anyhow::ensure!(
+                http.is_ok() && dns.is_ok(),
+                "HTTP mutations: {http:?}; DNS mutations: {dns:?}"
+            );
+            Ok(())
+        }
+        .await;
+
+        admin
+            .batch_execute(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await?;
+        if storage_path.exists() {
+            std::fs::remove_dir_all(storage_path)?;
+        }
+        result
     }
 }
