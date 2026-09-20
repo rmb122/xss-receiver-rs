@@ -36,14 +36,9 @@ impl UserStorage {
         UserStorage { path }
     }
 
-    /// 词法校验并解析为绝对路径。
-    /// 空字符串 -> root 本身。
-    /// 禁止: ".", "..", 包含 '\0' 的字符串。
+    /// Resolve a storage-relative path, rejecting `.` and `..` segments.
+    /// An empty path refers to the storage root.
     fn resolve(&self, path: &str) -> anyhow::Result<PathBuf> {
-        if path.contains('\0') {
-            anyhow::bail!("path contains null byte");
-        }
-
         let mut result = self.path.clone();
         if path.is_empty() {
             return Ok(result);
@@ -56,9 +51,6 @@ impl UserStorage {
             }
             if segment == "." || segment == ".." {
                 anyhow::bail!("invalid path segment: {}", segment);
-            }
-            if segment.contains('\0') {
-                anyhow::bail!("path contains null byte");
             }
             result.push(segment);
         }
