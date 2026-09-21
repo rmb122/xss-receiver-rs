@@ -7,17 +7,20 @@ use crate::utils::parsed_request::{ParsedRequest, ParsedRequestBody, normalize_h
 
 use super::helpers::json_value_to_js_value;
 
-/// Read the first value of a multimap entry without coercing the lookup key.
-fn multimap_get<'js>(
-    ctx: Ctx<'js>,
-    This(object): This<Object<'js>>,
-    key: Value<'js>,
-) -> Result<Value<'js>> {
-    let key = key
-        .as_string()
-        .ok_or_else(|| Exception::throw_type(&ctx, "key must be string"))?
-        .to_string()?;
-    first_map_value(&ctx, &object, &key)
+fn add_multimap_get<'js>(ctx: &Ctx<'js>, object: &Object<'js>) -> Result<()> {
+    let get_values: Value = object.get("get")?;
+    freeze_request_value(ctx, get_values.clone())?;
+    // A JavaScript closure keeps the reserved field visible to the garbage collector.
+    let create_get: Function = ctx.eval(
+        r#"(getValues) => function get(key) {
+            if (typeof key !== 'string') throw new TypeError('key must be string');
+            const values = key === 'get' ? getValues : this[key];
+            return values?.[0];
+        }"#,
+    )?;
+    let get: Function = create_get.call((get_values,))?;
+    object.remove("get")?;
+    object.prop("get", Property::from(get).writable().configurable())
 }
 
 fn first_map_value<'js>(ctx: &Ctx<'js>, object: &Object<'js>, key: &str) -> Result<Value<'js>> {
@@ -45,10 +48,8 @@ fn headers_get<'js>(
 fn create_multimap_object<'js>(
     ctx: &Ctx<'js>,
     multimap: &MultiMap<String, String>,
-    get: Function<'js>,
 ) -> Result<Object<'js>> {
     let object = Object::new(ctx.clone())?;
-    object.prop("get", Property::from(get).writable().configurable())?;
     let keys: BTreeSet<&String> = multimap.iter().map(|(key, _)| key).collect();
     for key in keys {
         if let Some(values) = multimap.get_all(key) {
@@ -70,7 +71,13 @@ fn create_headers_object<'js>(
     ctx: &Ctx<'js>,
     headers: &MultiMap<String, String>,
 ) -> Result<Object<'js>> {
-    let target = create_multimap_object(ctx, headers, Function::new(ctx.clone(), headers_get)?)?;
+    let target = create_multimap_object(ctx, headers)?;
+    target.prop(
+        "get",
+        Property::from(Function::new(ctx.clone(), headers_get)?)
+            .writable()
+            .configurable(),
+    )?;
     let normalize = Function::new(ctx.clone(), |name: String| normalize_header_name(&name))?;
     // Capture the intrinsics before running user code. Header names are folded
     // by the same Rust function that groups incoming request headers.
@@ -102,12 +109,6 @@ fn create_upload_files_object<'js>(
     files: &MultiMap<String, (String, Vec<u8>)>,
 ) -> Result<Object<'js>> {
     let object = Object::new(ctx.clone())?;
-    object.prop(
-        "get",
-        Property::from(Function::new(ctx.clone(), multimap_get)?)
-            .writable()
-            .configurable(),
-    )?;
     let keys: BTreeSet<&String> = files.iter().map(|(key, _)| key).collect();
     for key in keys {
         if let Some(files) = files.get_all(key) {
@@ -121,7 +122,20 @@ fn create_upload_files_object<'js>(
             )?;
         }
     }
+    add_multimap_get(ctx, &object)?;
     Ok(object)
+}
+
+fn freeze_request_value<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Result<()> {
+    // Request data is acyclic. Uint8Array bytes retain their normal writable API.
+    let freeze: Function = ctx.eval(
+        r#"(function freeze(value) {
+            if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return;
+            for (const key of Reflect.ownKeys(value)) freeze(value[key]);
+            Object.freeze(value);
+        })"#,
+    )?;
+    freeze.call((value,))
 }
 
 pub fn register_http_request_to_context<'js>(
@@ -156,30 +170,15 @@ pub fn register_http_request_to_context<'js>(
         TypedArray::new_copy(ctx.clone(), &request.raw_body)?,
     )?;
     object.set("headers", create_headers_object(ctx, &request.headers)?)?;
-    object.set(
-        "query",
-        create_multimap_object(
-            ctx,
-            &request.parsed_query,
-            Function::new(ctx.clone(), multimap_get)?,
-        )?,
-    )?;
+    let query = create_multimap_object(ctx, &request.parsed_query)?;
+    add_multimap_get(ctx, &query)?;
+    object.set("query", query)?;
     object.set("json", json)?;
-    object.set(
-        "forms",
-        create_multimap_object(ctx, forms, Function::new(ctx.clone(), multimap_get)?)?,
-    )?;
+    let forms = create_multimap_object(ctx, forms)?;
+    add_multimap_get(ctx, &forms)?;
+    object.set("forms", forms)?;
     object.set("files", create_upload_files_object(ctx, files)?)?;
-    // Request data is acyclic. The buffer properties are fixed, while their
-    // bytes intentionally retain the normal writable Uint8Array API.
-    let freeze: Function = ctx.eval(
-        r#"(function freeze(value) {
-            if (value === null || typeof value !== 'object' || value instanceof Uint8Array) return;
-            for (const key of Reflect.ownKeys(value)) freeze(value[key]);
-            Object.freeze(value);
-        })"#,
-    )?;
-    freeze.call::<_, ()>((object.clone(),))?;
+    freeze_request_value(ctx, object.clone().into_value())?;
     ctx.globals()
         .prop("request", Property::from(object).enumerable())
 }
@@ -215,6 +214,52 @@ mod tests {
                 serde_json::from_str(&json).unwrap()
             })
             .await
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn get_fields_do_not_replace_methods() {
+        let mut request = ParsedRequest::new(
+            "127.0.0.1:1234".parse().unwrap(),
+            Request::builder()
+                .uri("/?get=query-get&other=query-other")
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(Body::from("get=form-get&other=form-other"))
+                .unwrap(),
+            1024,
+        )
+        .await
+        .unwrap();
+        let ParsedRequestBody::Form(_, files) = &mut request.parsed_body else {
+            panic!("expected form body");
+        };
+        for name in ["get", "other"] {
+            files.insert(
+                name.to_owned(),
+                (format!("{name}.txt"), b"content".to_vec()),
+            );
+        }
+
+        let result = evaluate_request_module(
+            &request,
+            r#"
+            const file = request.files.get('get');
+            export default {
+                getValues: [request.query.get('get'), request.forms.get('get'), file.filename],
+                otherValues: [request.query.get('other'), request.forms.get('other'),
+                    request.files.get('other').filename],
+                getFileIsFrozen: Object.isFrozen(file),
+            };
+        "#,
+        )
+        .await;
+        assert_eq!(
+            result,
+            json!({
+                "getValues": ["query-get", "form-get", "get.txt"],
+                "otherValues": ["query-other", "form-other", "other.txt"],
+                "getFileIsFrozen": true,
+            })
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

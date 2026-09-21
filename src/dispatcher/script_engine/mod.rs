@@ -11,6 +11,7 @@ pub mod storage;
 pub mod utils;
 
 use crate::{dispatcher::DnsRequest, storage::UserStorage, utils::parsed_request::ParsedRequest};
+use axum::http::HeaderMap;
 use cache::ScriptCache;
 use http_client::ScriptHttpClient;
 use module_loader::StorageModuleLoader;
@@ -130,11 +131,13 @@ pub async fn evaluate_module_from_path(
 pub fn register_http_vars_to_context(
     ctx: &Ctx<'_>,
     request: &ParsedRequest,
+    response_headers: HeaderMap,
     user_storage: UserStorage,
     cache: ScriptCache,
     http_client: ScriptHttpClient,
 ) -> rquickjs::Result<Rc<RefCell<http_response::HttpResponse>>> {
-    let response = http_response::register_response_to_context(ctx, user_storage.clone())?;
+    let response =
+        http_response::register_response_to_context(ctx, user_storage.clone(), response_headers)?;
     http_request::register_http_request_to_context(ctx, request)?;
     storage::register_storage_to_context(ctx, user_storage)?;
     cache::register_cache_to_context(ctx, cache)?;

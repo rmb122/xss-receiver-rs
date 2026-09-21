@@ -24,7 +24,7 @@ mod script_timeout_tests {
 
     use axum::{
         body::{Body, to_bytes},
-        http::Request,
+        http::{HeaderMap, Request},
     };
     use hickory_proto::rr::RecordType;
     use tokio::{io::AsyncReadExt, net::TcpListener, sync::oneshot};
@@ -149,7 +149,10 @@ mod script_timeout_tests {
 
     async fn assert_http_recovers(handler: &ScriptHttpHandler, root: &Path) {
         write_script(root, "response.send('healthy'); export default 42;");
-        let (value, response) = handler.handle(http_request().await).await.unwrap();
+        let (value, response) = handler
+            .handle(http_request().await, HeaderMap::new())
+            .await
+            .unwrap();
         assert_eq!(value, serde_json::json!(42));
         assert_eq!(
             to_bytes(response.into_body(), 1024).await.unwrap(),
@@ -166,7 +169,7 @@ mod script_timeout_tests {
             .block_on(async {
                 let request = http_request().await;
                 let started = Instant::now();
-                assert_timeout(handler.handle(request).await, started);
+                assert_timeout(handler.handle(request, HeaderMap::new()).await, started);
                 assert_http_recovers(&handler, root).await;
             });
     }
@@ -265,7 +268,7 @@ mod script_timeout_tests {
                         );
                         let request = http_request().await;
                         let started = Instant::now();
-                        assert_timeout(handler.handle(request).await, started);
+                        assert_timeout(handler.handle(request, HeaderMap::new()).await, started);
                         request_received
                             .try_recv()
                             .expect("outbound HTTP request must have started");

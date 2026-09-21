@@ -192,7 +192,7 @@ request.headers.host === request.headers.Host
 ```
 
 Enumeration keeps normalized names such as `Host` and `User-Agent`, and missing headers return `undefined`.
-The exact property `.get` is reserved for the method; read a header named `get` with `.get('get')`.
+The exact property `.get` is always reserved for the method on headers, query, forms, and files; use `.get('get')` to read the first value of a field named `get`. Other properties still expose value arrays.
 
 `request`, its maps and value arrays, nested JSON, and uploaded file descriptors are frozen.
 Adding, replacing, or deleting properties and modifying array elements throws `TypeError` in ES modules.
@@ -205,8 +205,18 @@ Default exports use `JSON.stringify` semantics, including when headers are neste
 ```ts
 response.send(data: string | Uint8Array): void  // write response body (can be called repeatedly to append); mutually exclusive with sendFile
 response.sendFile(path: string): void           // stream a stored file as the body; call at most once; mutually exclusive with send
-response.sendStatus(code: number): void         // set status code (default 200)
-response.sendHeader(key: string, value: string | string[]): void
+response.setStatus(code: number): HttpResponse  // set status code (default 200); returns response
+response.setHeader(name: string, value: string | string[]): HttpResponse
+response.removeHeader(name: string): void
+```
+
+Default CORS headers and `Cache-Control`, `Pragma`, and `Expires` are initialized from the request before the script runs. Scripts can override or remove them; defaults are not reapplied after a successful script response.
+`setStatus` accepts an integer from 100 to 999 and returns `response` for chaining. Non-number arguments throw `TypeError`; non-finite, fractional, or out-of-range numbers throw `RangeError` without changing the current status code.
+`setHeader` and `removeHeader` ignore ASCII case in header names. `setHeader` replaces all values for the header and returns `response` for chaining; invalid header names or values throw `TypeError` without partially replacing the header. Use `removeHeader` to delete a header.
+
+```js
+response.removeHeader('Access-Control-Allow-Headers');
+response.setHeader('Cache-Control', 'public, max-age=60');
 ```
 
 ## DNS scripts (`.djs`)
@@ -229,6 +239,8 @@ type DnsResponseCode = 'NOERROR' | 'NXDOMAIN' | 'SERVFAIL' | 'REFUSED' | 'FORMER
 response.answer(type: DnsAnswerType, value: string, ttl?: number): void  // append one answer record
 response.rcode(code: DnsResponseCode): void                              // set the response code
 ```
+
+The `ttl` argument of `response.answer` is an integer from 0 to 4294967295 seconds. Omitted or `undefined` uses the default TTL. Non-number arguments throw `TypeError`; non-finite, fractional, or out-of-range numbers throw `RangeError` without adding a record.
 
 - The engine filters answers by the actual query type. Queries for `A` or `AAAA` also
   retain `CNAME` answers; `ANY` returns all appended records.
@@ -265,7 +277,7 @@ const data = {
 const day = data.time.slice(0, 10)
 storage.append(`loot/${day}.jsonl`, JSON.stringify(data) + '\n')
 
-response.sendHeader('Content-Type', 'image/gif')
+response.setHeader('Content-Type', 'image/gif')
 response.send(base64Decode('R0lGODlhAQABAAAAACwAAAAAAQABAAA='))
 
 export default { collected: true, who: data.from }
@@ -285,11 +297,13 @@ export default { name: request.name, hits }
 ### 3. Simple rate-limit counter with cache (`.hjs`)
 
 ```js
-const key = `rl:${request.clientAddr}`
+const addr = request.clientAddr
+// Remove the final :port; IPv6 brackets remain part of the key.
+const key = `rl:${addr.slice(0, addr.lastIndexOf(':'))}`
 const count = cache.incr(key, 1, 60) // 60s window
 
 if (count > 100) {
-  response.sendStatus(429)
+  response.setStatus(429)
   response.send('rate limited')
 } else {
   response.send('ok')

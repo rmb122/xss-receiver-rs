@@ -109,6 +109,7 @@ export const httpScriptEngineTypes = `
 ${commonScriptEngineTypes}
 
 interface MultiMap {
+  /** Always a method, including when a field is named "get"; get('get') reads that field's first value. */
   readonly get: (key: string) => string | undefined;
   readonly [key: string]: readonly string[] | ((key: string) => string | undefined);
 }
@@ -124,6 +125,7 @@ interface UploadFile {
 }
 
 interface UploadFilesMap {
+  /** Always a method; get('get') reads the first file from a field named "get". */
   readonly get: (name: string) => UploadFile | undefined;
   readonly [name: string]: readonly UploadFile[] | ((name: string) => UploadFile | undefined);
 }
@@ -145,8 +147,12 @@ interface HttpRequest {
 interface HttpResponse {
   send(data: string | Uint8Array): void;
   sendFile(path: string): void;
-  sendStatus(code: number): void;
-  sendHeader(key: string, value: string | string[]): void;
+  /** Sets an integer status code from 100 to 999 and returns response for chaining. Invalid types throw TypeError; invalid numbers throw RangeError. */
+  setStatus(code: number): HttpResponse;
+  /** Replaces all values, ignoring ASCII case in the name, and returns response for chaining. Default CORS and cache headers are set before the script runs. Invalid names or values throw TypeError without partially replacing the header. */
+  setHeader(name: string, value: string | string[]): HttpResponse;
+  /** Removes all values, including defaults, ignoring ASCII case in the name. Missing headers are ignored. */
+  removeHeader(name: string): void;
 }
 
 declare const request: HttpRequest;
@@ -167,6 +173,7 @@ interface DnsRequest {
 }
 
 interface DnsResponse {
+  /** ttl is an integer from 0 to 4294967295 seconds. Omitted or undefined uses the default TTL. Invalid types throw TypeError; invalid numbers throw RangeError. */
   answer(type: DnsAnswerType, value: string, ttl?: number): void;
   rcode(code: DnsResponseCode): void;
 }

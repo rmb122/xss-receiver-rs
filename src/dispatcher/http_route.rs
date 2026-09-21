@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use axum::{body::Body, http::Response};
+use axum::{
+    body::Body,
+    http::{HeaderMap, Response},
+};
 use tokio::task;
 use tokio_util::io::ReaderStream;
 
@@ -22,6 +25,7 @@ pub trait HttpRouteHandler: Sync + Send {
     async fn handle(
         &self,
         request: ParsedRequest,
+        response_headers: HeaderMap,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)>;
 }
 
@@ -99,18 +103,19 @@ impl HttpRouteHandler for StaticHttpHandler {
     async fn handle(
         &self,
         _: ParsedRequest,
+        response_headers: HeaderMap,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         let content_type = mime_guess::from_path(&self.filename).first_or_text_plain();
 
-        Ok((
-            serde_json::Value::Null,
-            Response::builder()
-                .header("Content-Type", content_type.to_string())
-                .body(Body::from_stream(ReaderStream::with_capacity(
-                    tokio::fs::File::open(&self.filename).await?,
-                    10240, // 1M
-                )))?,
-        ))
+        let mut response = Response::new(Body::from_stream(ReaderStream::with_capacity(
+            tokio::fs::File::open(&self.filename).await?,
+            10240, // 1M
+        )));
+        *response.headers_mut() = response_headers;
+        response
+            .headers_mut()
+            .insert("Content-Type", content_type.to_string().parse()?);
+        Ok((serde_json::Value::Null, response))
     }
 }
 
@@ -147,6 +152,7 @@ impl HttpRouteHandler for ScriptHttpHandler {
     async fn handle(
         &self,
         request: ParsedRequest,
+        response_headers: HeaderMap,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
         // Reload the entry source for every request.
         let filename = tokio::fs::canonicalize(&self.filename).await?;
@@ -168,6 +174,7 @@ impl HttpRouteHandler for ScriptHttpHandler {
                         register_http_vars_to_context(
                             &ctx,
                             &request,
+                            response_headers,
                             user_storage,
                             cache,
                             http_client,
@@ -188,15 +195,8 @@ impl HttpRouteHandler for ScriptHttpHandler {
         })
         .await??;
 
-        let mut builder = Response::builder().status(response.status_code);
-
-        for (k, vs) in response.headers {
-            for v in vs {
-                builder = builder.header(&k, v);
-            }
-        }
-
-        let axum_response = match response.body_file {
+        let builder = Response::builder().status(response.status_code);
+        let mut axum_response = match response.body_file {
             Some(body_file) => {
                 builder.body(Body::from_stream(ReaderStream::with_capacity(
                     tokio::fs::File::open(&body_file).await?,
@@ -205,6 +205,7 @@ impl HttpRouteHandler for ScriptHttpHandler {
             }
             None => builder.body(Body::from(response.body))?,
         };
+        *axum_response.headers_mut() = response.headers;
 
         Ok((result, axum_response))
     }
@@ -223,10 +224,10 @@ impl HttpRouteHandler for NoneHttpHandler {
     async fn handle(
         &self,
         _: ParsedRequest,
+        response_headers: HeaderMap,
     ) -> anyhow::Result<(serde_json::Value, Response<Body>)> {
-        Ok((
-            serde_json::Value::Null,
-            Response::builder().status(404).body(Body::empty())?,
-        ))
+        let mut response = Response::builder().status(404).body(Body::empty())?;
+        *response.headers_mut() = response_headers;
+        Ok((serde_json::Value::Null, response))
     }
 }

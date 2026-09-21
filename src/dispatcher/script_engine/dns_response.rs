@@ -46,10 +46,19 @@ pub fn register_dns_response_to_context<'js>(
                 .to_string()?;
             let value = ensure_exists(args[1].as_string(), "argument 1 must be a string", &ctx)?
                 .to_string()?;
-            let ttl = args
-                .get(2)
-                .and_then(Value::as_number)
-                .map(|value| value as u32);
+            let ttl = if let Some(value) = args.get(2).filter(|value| !value.is_undefined()) {
+                let ttl = ensure_exists(value.as_number(), "ttl must be a number", &ctx)?;
+                if !ttl.is_finite() || ttl.fract() != 0.0 || !(0.0..=u32::MAX as f64).contains(&ttl)
+                {
+                    return Err(Exception::throw_range(
+                        &ctx,
+                        "ttl must be an integer between 0 and 4294967295",
+                    ));
+                }
+                Some(ttl as u32)
+            } else {
+                None
+            };
             let kind = parse_answer_kind(&kind, &ctx)?;
             shared
                 .borrow_mut()
@@ -74,4 +83,36 @@ pub fn register_dns_response_to_context<'js>(
     ctx.globals()
         .prop("response", Property::from(object).enumerable())?;
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use rquickjs::{Context, Runtime};
+
+    use super::register_dns_response_to_context;
+
+    #[test]
+    fn answer_rejects_invalid_ttl_without_adding_records() {
+        let runtime = Runtime::new().unwrap();
+        let context = Context::full(&runtime).unwrap();
+        context.with(|ctx| {
+            let response = register_dns_response_to_context(&ctx).unwrap();
+            let rejected: bool = ctx
+                .eval(
+                    r#"
+                response.answer('A', '192.0.2.1');
+                ['60', 0.5, NaN, -1, 4294967296].every(ttl => {
+                    try { response.answer('A', '192.0.2.2', ttl); return false; }
+                    catch (error) {
+                        return error instanceof (typeof ttl === 'number' ? RangeError : TypeError);
+                    }
+                });
+            "#,
+                )
+                .unwrap();
+            assert!(rejected);
+            let response = response.borrow().clone().into_response().unwrap();
+            assert_eq!(response.answers.len(), 1);
+        });
+    }
 }

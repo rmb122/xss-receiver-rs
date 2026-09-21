@@ -202,7 +202,7 @@ const shared = await import("shared/utils.js");
 `request.headers.get('HOST')` and `request.headers.get('host')` return the same first value;
 `request.headers.Host`, `request.headers['HOST']`, and `request.headers.host` return the same array of values.
 Header-name lookup ignores ASCII case. Enumeration keeps normalized names such as `Host` and `User-Agent`, and missing headers return `undefined`.
-The exact property `.get` is reserved for the method; read a header named `get` with `.get('get')`. Query, form, and file field names remain case-sensitive.
+The exact property `.get` is always reserved for the method on headers, query, forms, and files; use `.get('get')` to read the first value of a field named `get`. Other properties still expose value arrays. Query, form, and file field names remain case-sensitive.
 
 The `request` object, headers/query/forms/files maps and their value arrays, nested JSON, and uploaded file descriptors are read-only. Adding, replacing, or deleting properties and modifying array elements throws `TypeError` in ES modules. Copy data before editing it, for example `const headers = { ...request.headers }` or `const values = [...request.headers.host]`.
 The `request.body` and uploaded file `content` properties cannot be reassigned; their `Uint8Array` bytes remain writable.
@@ -213,8 +213,18 @@ The `request.body` and uploaded file `content` properties cannot be reassigned; 
 | --------------------------------- | ------------------------------------------------------------------------------------ |
 | `response.send(data)`             | write the response body (string or `Uint8Array`); mutually exclusive with `sendFile` |
 | `response.sendFile(path)`         | use a file from storage as the response body; callable only once                     |
-| `response.sendStatus(code)`       | set the status code                                                                  |
-| `response.sendHeader(key, value)` | set a response header; `value` may be a string or array of strings                   |
+| `response.setStatus(code)`        | set the status code; returns `response`                                               |
+| `response.setHeader(name, value)` | set a response header; `value` may be a string or array of strings; returns `response` |
+| `response.removeHeader(name)`    | remove all values for a header; does nothing if it is absent |
+
+Default CORS headers and `Cache-Control`, `Pragma`, and `Expires` are initialized from the request before the script runs. Scripts can override or remove them; defaults are not reapplied after a successful script response.
+`setStatus` accepts an integer from 100 to 999 and returns `response` for chaining. Non-number arguments throw `TypeError`; non-finite, fractional, or out-of-range numbers throw `RangeError` without changing the current status code.
+`setHeader` and `removeHeader` ignore ASCII case in header names. `setHeader` replaces all values for the header and returns `response` for chaining; invalid header names or values throw `TypeError` without partially replacing the header. Use `removeHeader` to delete a header.
+
+```js
+response.removeHeader('Access-Control-Allow-Headers');
+response.setHeader('Cache-Control', 'public, max-age=60');
+```
 
 ### `request` (DNS)
 
@@ -231,6 +241,8 @@ The `request.body` and uploaded file `content` properties cannot be reassigned; 
 | ------------------------------------ | --------------------------------------------------------------------------- |
 | `response.answer(type, value, ttl?)` | append an answer record; `type` supports `A` / `AAAA` / `CNAME` / `TXT`     |
 | `response.rcode(code)`               | set the response code, e.g. `NOERROR` / `NXDOMAIN` / `SERVFAIL` / `REFUSED` |
+
+The `ttl` argument of `response.answer` is an integer from 0 to 4294967295 seconds. Omitted or `undefined` uses the default TTL. Non-number arguments throw `TypeError`; non-finite, fractional, or out-of-range numbers throw `RangeError` without adding a record.
 
 ### `storage` (shared)
 

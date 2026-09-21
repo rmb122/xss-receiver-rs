@@ -1,6 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use rquickjs::{Ctx, Exception, Function, Object, Result, Value, function::Rest, object::Property};
+use axum::http::{HeaderMap, HeaderName, HeaderValue};
+use rquickjs::{
+    Ctx, Exception, Function, Object, Result, Value,
+    function::{Rest, This},
+    object::Property,
+};
 
 use crate::storage::UserStorage;
 
@@ -9,7 +14,7 @@ use super::helpers::{check_argument_count, ensure_exists, read_u8_array_from_js_
 #[derive(Clone)]
 pub struct HttpResponse {
     pub status_code: u16,
-    pub headers: HashMap<String, Vec<String>>,
+    pub headers: HeaderMap,
     pub body_file: Option<String>,
     pub body: Vec<u8>,
 }
@@ -17,10 +22,11 @@ pub struct HttpResponse {
 pub fn register_response_to_context<'js>(
     ctx: &Ctx<'js>,
     storage: UserStorage,
+    headers: HeaderMap,
 ) -> Result<Rc<RefCell<HttpResponse>>> {
     let response = Rc::new(RefCell::new(HttpResponse {
         status_code: 200,
-        headers: HashMap::new(),
+        headers,
         body_file: None,
         body: Vec::new(),
     }));
@@ -89,46 +95,96 @@ pub fn register_response_to_context<'js>(
 
     let shared = response.clone();
     object.set(
-        "sendStatus",
-        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
-            check_argument_count(&args, 1, &ctx)?;
-            let status = ensure_exists(args[0].as_number(), "not a valid number", &ctx)?;
-            shared.borrow_mut().status_code = status as u16;
-            Ok::<_, rquickjs::Error>(())
-        })?,
+        "setStatus",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, This(receiver): This<Object<'js>>, args: Rest<Value<'js>>| {
+                check_argument_count(&args, 1, &ctx)?;
+                let status =
+                    ensure_exists(args[0].as_number(), "status code must be a number", &ctx)?;
+                if !status.is_finite()
+                    || status.fract() != 0.0
+                    || !(100.0..=999.0).contains(&status)
+                {
+                    return Err(Exception::throw_range(
+                        &ctx,
+                        "status code must be an integer between 100 and 999",
+                    ));
+                }
+                shared.borrow_mut().status_code = status as u16;
+                Ok::<_, rquickjs::Error>(receiver)
+            },
+        )?,
     )?;
 
     let shared = response.clone();
     object.set(
-        "sendHeader",
-        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
-            check_argument_count(&args, 2, &ctx)?;
-            let key =
-                ensure_exists(args[0].as_string(), "not a valid string", &ctx)?.to_string()?;
-            let values = if let Some(value) = args[1].as_string() {
-                vec![value.to_string()?]
-            } else {
-                let array = ensure_exists(
-                    args[1].as_array(),
-                    "argument 1 not a valid string or string array",
-                    &ctx,
-                )?;
-                let length: u32 = array.as_object().get("length")?;
-                let mut values = Vec::new();
-                for index in 0..length {
-                    let value = array.get::<Value>(index as usize)?;
-                    values.push(
-                        ensure_exists(
-                            value.as_string(),
-                            &format!("not a valid string in array index {index}"),
-                            &ctx,
-                        )?
-                        .to_string()?,
-                    );
+        "setHeader",
+        Function::new(
+            ctx.clone(),
+            move |ctx: Ctx<'js>, This(receiver): This<Object<'js>>, args: Rest<Value<'js>>| {
+                check_argument_count(&args, 2, &ctx)?;
+                let key =
+                    ensure_exists(args[0].as_string(), "not a valid string", &ctx)?.to_string()?;
+                let values = if let Some(value) = args[1].as_string() {
+                    vec![value.to_string()?]
+                } else {
+                    let array = ensure_exists(
+                        args[1].as_array(),
+                        "argument 1 not a valid string or string array",
+                        &ctx,
+                    )?;
+                    let length: u32 = array.as_object().get("length")?;
+                    let mut values = Vec::new();
+                    for index in 0..length {
+                        let value = array.get::<Value>(index as usize)?;
+                        values.push(
+                            ensure_exists(
+                                value.as_string(),
+                                &format!("not a valid string in array index {index}"),
+                                &ctx,
+                            )?
+                            .to_string()?,
+                        );
+                    }
+                    values
+                };
+                let name = HeaderName::from_bytes(key.as_bytes()).map_err(|error| {
+                    Exception::throw_type(
+                        &ctx,
+                        &format!("invalid HTTP header name {key:?}: {error}"),
+                    )
+                })?;
+                let values = values
+                    .into_iter()
+                    .map(|value| {
+                        HeaderValue::from_str(&value).map_err(|error| {
+                            Exception::throw_type(
+                                &ctx,
+                                &format!("invalid value for header {key}: {error}"),
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                let mut response = shared.borrow_mut();
+                response.headers.remove(&name);
+                for value in values {
+                    response.headers.append(name.clone(), value);
                 }
-                values
-            };
-            shared.borrow_mut().headers.insert(key, values);
+                Ok::<_, rquickjs::Error>(receiver)
+            },
+        )?,
+    )?;
+
+    let shared = response.clone();
+    object.set(
+        "removeHeader",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, args: Rest<Value<'js>>| {
+            check_argument_count(&args, 1, &ctx)?;
+            let name =
+                ensure_exists(args[0].as_string(), "not a valid string", &ctx)?.to_string()?;
+            shared.borrow_mut().headers.remove(name.as_str());
             Ok::<_, rquickjs::Error>(())
         })?,
     )?;
@@ -141,6 +197,7 @@ pub fn register_response_to_context<'js>(
 mod tests {
     use std::fs;
 
+    use axum::http::HeaderMap;
     use rquickjs::{Context, Runtime};
 
     use super::register_response_to_context;
@@ -153,6 +210,35 @@ mod tests {
         storage::UserStorage,
     };
 
+    #[test]
+    fn set_status_rejects_invalid_codes_without_changing_the_response() {
+        let runtime = Runtime::new().unwrap();
+        let context = Context::full(&runtime).unwrap();
+        context.with(|ctx| {
+            let response = register_response_to_context(
+                &ctx,
+                UserStorage::new(std::env::temp_dir()),
+                HeaderMap::new(),
+            )
+            .unwrap();
+            let rejected: bool = ctx
+                .eval(
+                    r#"
+                response.setStatus(201);
+                ['200', 200.5, NaN, 99, 1000].every(code => {
+                    try { response.setStatus(code); return false; }
+                    catch (error) {
+                        return error instanceof (typeof code === 'number' ? RangeError : TypeError);
+                    }
+                });
+            "#,
+                )
+                .unwrap();
+            assert!(rejected);
+            assert_eq!(response.borrow().status_code, 201);
+        });
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn oversized_sparse_header_arrays_return_errors() {
         use crate::dispatcher::script_engine::{
@@ -163,7 +249,11 @@ mod tests {
         let (_runtime, context) = create_context().await;
         context
             .with(|ctx| {
-                register_response_to_context(&ctx, UserStorage::new(std::env::temp_dir()))?;
+                register_response_to_context(
+                    &ctx,
+                    UserStorage::new(std::env::temp_dir()),
+                    HeaderMap::new(),
+                )?;
                 let client = ScriptHttpClient::new(&crate::startup_config::ScriptHttp {
                     allow_private_network: true,
                     ..Default::default()
@@ -178,7 +268,7 @@ mod tests {
             const values = new Array(2147483648);
             const errors = [];
             try {
-                response.sendHeader('X-Test', values);
+                response.setHeader('X-Test', values);
             } catch (error) {
                 errors.push(error instanceof TypeError && error.message.includes('index 0'));
             }
@@ -204,7 +294,8 @@ mod tests {
         let runtime = Runtime::new().unwrap();
         let context = Context::full(&runtime).unwrap();
         context.with(|ctx| {
-            let response = register_response_to_context(&ctx, storage.clone()).unwrap();
+            let response =
+                register_response_to_context(&ctx, storage.clone(), HeaderMap::new()).unwrap();
             register_storage_to_context(&ctx, storage).unwrap();
             register_utils_to_context(&ctx).unwrap();
             register_cache_to_context(
@@ -229,8 +320,7 @@ mod tests {
                 response.send(storage.read("files/result"));
                 response.send(base64Decode(base64Encode(bytes)));
                 response.send(urlDecode(urlEncode(" hello")));
-                response.sendStatus(201);
-                response.sendHeader("Set-Cookie", ["a=1", "b=2"]);
+                response.setStatus(201).setHeader("Set-Cookie", ["a=1", "b=2"]);
                 if (storage.list("files")[0].size !== 4 || storage.listAll().length !== 1) {
                     throw new Error("unexpected storage listing");
                 }
@@ -244,7 +334,14 @@ mod tests {
             let response = response.borrow();
             assert_eq!(response.body, b"ABC!ZBC hello");
             assert_eq!(response.status_code, 201);
-            assert_eq!(response.headers["Set-Cookie"], ["a=1", "b=2"]);
+            assert_eq!(
+                response
+                    .headers
+                    .get_all("Set-Cookie")
+                    .iter()
+                    .collect::<Vec<_>>(),
+                ["a=1", "b=2"]
+            );
         });
         fs::remove_dir_all(root).unwrap();
     }
@@ -258,7 +355,8 @@ mod tests {
         let runtime = Runtime::new().unwrap();
         let context = Context::full(&runtime).unwrap();
         context.with(|ctx| {
-            let response = register_response_to_context(&ctx, storage.clone()).unwrap();
+            let response =
+                register_response_to_context(&ctx, storage.clone(), HeaderMap::new()).unwrap();
             let errors: i32 = ctx
                 .eval(
                     r#"
@@ -282,7 +380,7 @@ mod tests {
         });
         let context = Context::full(&runtime).unwrap();
         context.with(|ctx| {
-            let response = register_response_to_context(&ctx, storage).unwrap();
+            let response = register_response_to_context(&ctx, storage, HeaderMap::new()).unwrap();
             let rejected: bool = ctx
                 .eval(
                     r#"

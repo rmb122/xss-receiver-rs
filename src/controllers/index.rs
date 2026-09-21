@@ -1,11 +1,11 @@
 use axum::{
     body::Body,
     extract::{ConnectInfo, State},
-    http::{HeaderMap, HeaderName, HeaderValue, Request},
+    http::{HeaderMap, HeaderValue, Request, header},
     response::Response,
 };
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
-use std::{collections::HashMap, net::SocketAddr, str::FromStr};
+use std::net::SocketAddr;
 
 use crate::{
     controllers::Context,
@@ -106,53 +106,48 @@ pub fn get_real_addr_from_request(
     }
 }
 
-fn process_response_headers(request_headers: &HeaderMap, mut response: Response) -> Response {
-    let mut response_headers: HashMap<String, String> = HashMap::new();
+fn get_default_response_headers(request_headers: &HeaderMap) -> HeaderMap {
+    let mut response_headers = HeaderMap::from_iter([
+        (
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+        ),
+        (header::PRAGMA, HeaderValue::from_static("no-cache")),
+        (header::EXPIRES, HeaderValue::from_static("0")),
+    ]);
 
-    response_headers.insert(
-        "Cache-Control".to_owned(),
-        "no-store, no-cache, must-revalidate".to_owned(),
-    );
-    response_headers.insert("Pragma".to_owned(), "no-cache".to_owned());
-    response_headers.insert("Expires".to_owned(), "0".to_owned());
-
-    if let Some(header_value) = request_headers.get("Origin") {
-        // 确定为跨域请求
+    if request_headers.contains_key(header::ORIGIN) {
         response_headers.insert(
-            "Access-Control-Allow-Origin".to_owned(),
-            header_value.to_str().unwrap_or("").to_owned(),
+            header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+            HeaderValue::from_static("true"),
         );
-
-        response_headers.insert(
-            "Access-Control-Allow-Credentials".to_owned(),
-            "true".to_owned(),
-        );
-
-        if let Some(header_value) = request_headers.get("Access-Control-Request-Headers") {
-            response_headers.insert(
-                "Access-Control-Allow-Headers".to_owned(),
-                header_value.to_str().unwrap_or("").to_owned(),
-            );
-        }
-        if let Some(header_value) = request_headers.get("Access-Control-Request-Method") {
-            response_headers.insert(
-                "Access-Control-Allow-Methods".to_owned(),
-                header_value.to_str().unwrap_or("").to_owned(),
-            );
+        for (request_name, response_name) in [
+            (header::ORIGIN, header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            (
+                header::ACCESS_CONTROL_REQUEST_HEADERS,
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+            ),
+            (
+                header::ACCESS_CONTROL_REQUEST_METHOD,
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+            ),
+        ] {
+            if let Some(value) = request_headers.get(request_name) {
+                response_headers.insert(
+                    response_name,
+                    HeaderValue::from_str(value.to_str().unwrap_or("")).unwrap(),
+                );
+            }
         }
     }
 
-    for (k, v) in response_headers {
-        if let (Ok(k), Ok(v)) = (HeaderName::from_str(&k), HeaderValue::from_str(&v)) {
-            response.headers_mut().insert(k, v);
-        }
-    }
-
-    return response;
+    response_headers
 }
 
-pub fn get_default_response() -> Response<Body> {
-    Response::builder().status(404).body(Body::empty()).unwrap()
+pub fn get_default_response(headers: HeaderMap) -> Response<Body> {
+    let mut response = Response::builder().status(404).body(Body::empty()).unwrap();
+    *response.headers_mut() = headers;
+    response
 }
 
 pub async fn process_http_route(
@@ -160,6 +155,7 @@ pub async fn process_http_route(
     client_addr: &SocketAddr,
     request: Request<Body>,
     http_route: &HttpRoute,
+    response_headers: &HeaderMap,
 ) -> anyhow::Result<Response<Body>> {
     let request = ParsedRequest::new(
         client_addr.clone(),
@@ -173,7 +169,10 @@ pub async fn process_http_route(
         new_http_log = Some(get_http_log_from_request(&request, &ctx.locator, &ctx.storage).await?);
     }
 
-    let result = http_route.handler.handle(request).await;
+    let result = http_route
+        .handler
+        .handle(request, response_headers.clone())
+        .await;
 
     let response = if let Some(mut new_http_log) = new_http_log {
         let response = match result {
@@ -183,7 +182,7 @@ pub async fn process_http_route(
             }
             Err(error) => {
                 new_http_log.error_log = Some(error.to_string());
-                get_default_response()
+                get_default_response(response_headers.clone())
             }
         };
 
@@ -194,7 +193,7 @@ pub async fn process_http_route(
     } else {
         match result {
             Ok((_, response)) => response,
-            Err(_) => get_default_response(),
+            Err(_) => get_default_response(response_headers.clone()),
         }
     };
 
@@ -206,9 +205,9 @@ pub async fn index(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     request: Request<Body>,
 ) -> Response<Body> {
-    let request_headers = request.headers().clone();
+    let response_headers = get_default_response_headers(request.headers());
     let client_addr: SocketAddr = if let Ok(client_addr) =
-        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, &request_headers)
+        get_real_addr_from_request(&ctx.config.http_server.real_addr_header, request.headers())
     {
         client_addr
     } else {
@@ -224,8 +223,9 @@ pub async fn index(
     if let Some(http_route) = http_route {
         let url = request.uri().to_string();
 
-        match process_http_route(&ctx, &client_addr, request, &http_route).await {
-            Ok(response) => return process_response_headers(&request_headers, response),
+        match process_http_route(&ctx, &client_addr, request, &http_route, &response_headers).await
+        {
+            Ok(response) => return response,
             Err(error) => {
                 tokio::spawn(handle_system_error(
                     ctx.pool.clone(),
@@ -237,12 +237,103 @@ pub async fn index(
         }
     };
 
-    process_response_headers(&request_headers, get_default_response())
+    get_default_response(response_headers)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        sync::{Arc, RwLock},
+    };
+
+    use axum::http::StatusCode;
+    use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+    use jsonwebtoken::Algorithm;
+    use tokio::sync::Mutex;
+
     use super::*;
+    use crate::{
+        db::http_route::model::{HandlerKind, PatternKind},
+        dispatcher::{DnsDispatcher, HttpDispatcher, ScriptCache, ScriptHttpClient},
+        utils::{ip2region::CachePolicy, jwt::JwtManager},
+    };
+
+    #[tokio::test]
+    async fn script_can_remove_default_allow_headers() {
+        let root =
+            std::env::temp_dir().join(format!("xss-response-headers-{}", rand::random::<u64>()));
+        let mut config =
+            crate::startup_config::parse(include_str!("../../config_example.toml")).unwrap();
+        config.storage_path = root.to_str().unwrap().to_owned();
+        let storage = Storage::new(&config.storage_path).unwrap();
+        storage
+            .user()
+            .write(
+                "handler.hjs",
+                b"response.removeHeader('aCcEsS-CoNtRoL-AlLoW-HeAdErS');",
+            )
+            .unwrap();
+        let cache = ScriptCache::new(&config.script.cache);
+        let http_client = ScriptHttpClient::new(&config.script.http).unwrap();
+        let route = HttpRoute::transform(
+            crate::db::http_route::model::HttpRoute {
+                id: 0,
+                pattern_kind: PatternKind::PLAIN,
+                pattern: "/script".to_owned(),
+                priority: 0,
+                timeout: 5000,
+                catalog: String::new(),
+                handler_kind: HandlerKind::SCRIPT,
+                handler: "handler.hjs".to_owned(),
+                write_log: false,
+                comment: String::new(),
+                create_time: chrono::Utc::now(),
+            },
+            &storage,
+            cache.clone(),
+            http_client.clone(),
+        )
+        .unwrap();
+        // Logging is disabled, so the lazy pool never opens a connection.
+        let pool = bb8::Pool::builder()
+            .build_unchecked(AsyncDieselConnectionManager::new("postgres://unused"));
+        let context = Context {
+            config: Arc::new(config),
+            pool,
+            jwt_manager: Arc::new(JwtManager::new(Algorithm::HS512, b"test", 60)),
+            locator: Arc::new(Locator::new(None, None, CachePolicy::VectorIndex).unwrap()),
+            http_dispatcher: Arc::new(RwLock::new(HttpDispatcher::new(vec![route]).unwrap())),
+            dns_dispatcher: Arc::new(RwLock::new(DnsDispatcher::new(Vec::new()).unwrap())),
+            storage: Arc::new(storage),
+            script_cache: cache,
+            script_http_client: http_client,
+            http_route_update_lock: Arc::new(Mutex::new(())),
+            dns_route_update_lock: Arc::new(Mutex::new(())),
+        };
+
+        let response = index(
+            State(context),
+            ConnectInfo("127.0.0.1:12345".parse().unwrap()),
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/script")
+                .header("Origin", "https://example.com")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "x-test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        fs::remove_dir_all(root).unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            !response
+                .headers()
+                .contains_key("Access-Control-Allow-Headers")
+        );
+    }
 
     #[test]
     fn cors_actual_response_allows_the_request_origin_with_credentials() {
@@ -251,20 +342,14 @@ mod tests {
             .header("Origin", "https://example.com")
             .body(Body::empty())
             .unwrap();
-        let response = process_response_headers(
-            request.headers(),
-            Response::builder().status(200).body(Body::empty()).unwrap(),
-        );
+        let headers = get_default_response_headers(request.headers());
 
         assert_eq!(
-            response.headers()["Access-Control-Allow-Origin"],
+            headers["Access-Control-Allow-Origin"],
             "https://example.com"
         );
-        assert_eq!(
-            response.headers()["Access-Control-Allow-Credentials"],
-            "true"
-        );
-        assert!(!response.headers().contains_key("Origin"));
+        assert_eq!(headers["Access-Control-Allow-Credentials"], "true");
+        assert!(!headers.contains_key("Origin"));
     }
 
     #[test]
@@ -279,39 +364,27 @@ mod tests {
             )
             .body(Body::empty())
             .unwrap();
-        let response = process_response_headers(
-            request.headers(),
-            Response::builder().status(200).body(Body::empty()).unwrap(),
-        );
+        let headers = get_default_response_headers(request.headers());
 
-        assert!(response.status().is_success());
         assert_eq!(
-            response.headers()["Access-Control-Allow-Origin"],
+            headers["Access-Control-Allow-Origin"],
             "https://example.com"
         );
-        assert_eq!(response.headers()["Access-Control-Allow-Methods"], "POST");
+        assert_eq!(headers["Access-Control-Allow-Methods"], "POST");
         assert_eq!(
-            response.headers()["Access-Control-Allow-Headers"],
+            headers["Access-Control-Allow-Headers"],
             "content-type, x-custom-header"
         );
     }
 
     #[test]
     fn response_without_origin_does_not_add_cors_authorization() {
-        let response = process_response_headers(&HeaderMap::new(), get_default_response());
+        let headers = get_default_response_headers(&HeaderMap::new());
 
-        assert!(
-            !response
-                .headers()
-                .contains_key("Access-Control-Allow-Origin")
-        );
-        assert!(
-            !response
-                .headers()
-                .contains_key("Access-Control-Allow-Credentials")
-        );
+        assert!(!headers.contains_key("Access-Control-Allow-Origin"));
+        assert!(!headers.contains_key("Access-Control-Allow-Credentials"));
         assert_eq!(
-            response.headers()["Cache-Control"],
+            headers["Cache-Control"],
             "no-store, no-cache, must-revalidate"
         );
     }

@@ -202,7 +202,7 @@ const shared = await import("shared/utils.js");
 `request.headers.get('HOST')` 与 `request.headers.get('host')` 返回相同的首个值；
 `request.headers.Host`、`request.headers['HOST']` 与 `request.headers.host` 返回同一个多值数组。
 头名称按 ASCII 规则忽略大小写，遍历时仍使用规范化名称（如 `Host`、`User-Agent`），缺失的头返回 `undefined`。
-`.get` 保留为方法，名为 `get` 的请求头通过 `.get('get')` 读取。query、form 和文件字段名仍区分大小写。
+headers, query, forms 和 files 的 `.get` 始终保留为方法, 名为 `get` 的字段通过 `.get('get')` 读取首值. 其它属性仍返回多值数组. query, form 和文件字段名仍区分大小写.
 
 `request` 对象、headers/query/forms/files 映射及其值数组、嵌套 JSON 和上传文件描述对象均只读，不能新增、修改、删除属性或修改数组元素。ES 模块中这些写操作会抛出 `TypeError`；需要修改时先复制，例如 `const headers = { ...request.headers }`、`const values = [...request.headers.host]`。
 `request.body` 和上传文件的 `content` 属性不能重新赋值，其 `Uint8Array` 缓冲区内容仍可正常修改。
@@ -213,8 +213,18 @@ const shared = await import("shared/utils.js");
 | --------------------------------- | ------------------------------------------------------- |
 | `response.send(data)`             | 写入响应体（字符串或 `Uint8Array`），与 `sendFile` 互斥 |
 | `response.sendFile(path)`         | 以存储中的文件作为响应体，仅可调用一次                  |
-| `response.sendStatus(code)`       | 设置状态码                                              |
-| `response.sendHeader(key, value)` | 设置响应头，`value` 可为字符串或字符串数组              |
+| `response.setStatus(code)`        | 设置状态码, 返回 `response`                              |
+| `response.setHeader(name, value)` | 设置响应头, `value` 可为字符串或字符串数组, 返回 `response` |
+| `response.removeHeader(name)`    | 删除响应头的全部值, 头不存在时不做任何操作 |
+
+默认 CORS 头及 `Cache-Control`, `Pragma`, `Expires` 会按请求在脚本执行前初始化, 脚本可以覆盖或删除它们. 脚本成功返回后不会重新补写默认头.
+`setStatus` 接受 `100..=999` 范围内的整数并返回 `response`, 支持链式调用. 非数字参数抛出 `TypeError`, 非有限数, 小数或越界值抛出 `RangeError`, 不会修改已有状态码.
+`setHeader` 和 `removeHeader` 按 ASCII 规则忽略头名大小写. `setHeader` 替换该头的全部值并返回 `response`, 支持链式调用; 无效头名或值会抛出 `TypeError`, 不会部分替换该头. 使用 `removeHeader` 删除响应头.
+
+```js
+response.removeHeader('Access-Control-Allow-Headers');
+response.setHeader('Cache-Control', 'public, max-age=60');
+```
 
 ### `request`（DNS）
 
@@ -231,6 +241,8 @@ const shared = await import("shared/utils.js");
 | ------------------------------------ | -------------------------------------------------------------- |
 | `response.answer(type, value, ttl?)` | 追加一条应答记录，`type` 支持 `A` / `AAAA` / `CNAME` / `TXT`   |
 | `response.rcode(code)`               | 设置响应码，如 `NOERROR` / `NXDOMAIN` / `SERVFAIL` / `REFUSED` |
+
+`response.answer` 的 `ttl` 单位为秒, 接受 `0..=4294967295` 范围内的整数. 省略或传入 `undefined` 时使用默认 TTL. 非数字参数抛出 `TypeError`, 非有限数, 小数或越界值抛出 `RangeError`, 不会追加记录.
 
 ### `storage`（通用）
 
