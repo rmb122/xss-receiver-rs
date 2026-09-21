@@ -103,6 +103,7 @@ HTTP 和 DNS 日志页面支持表达式过滤. 点击过滤按钮展开输入�
 ```text
 client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"
 method = "POST" && contains(path, "/api")
+contains(path, '\u4e2d\u6587')
 contains(raw_body, "asd") && method = "POST"
 query_type = "A" && !contains(query_name, "example.com")
 error_log != null
@@ -114,10 +115,10 @@ error_log != null
 | HTTP 专有 | `method`, `path`, `raw_query`, `raw_body`, `parsed_body_type`            |
 | DNS 专有  | `query_name`, `query_type`, `query_class`                                |
 
-- 整数和时间支持 `=`, `!=`, `<`, `<=`, `>`, `>=`. 字符串使用双引号和 JSON 转义, 支持 `=`, `!=`, `contains(field, "text")`, 区分大小写. `contains` 按字面子串匹配, `%` 和 `_` 是普通字符.
+- 整数和时间支持 `=`, `!=`, `<`, `<=`, `>`, `>=`. 字符串使用单引号或双引号, 支持 JSON 转义 (如 `\n`, `\uXXXX`) 和 `\'`. 例如 `'\u4e2d\u6587'` 等同于 `"中文"`. 字符串支持 `=`, `!=`, `contains(field, "text")`, 区分大小写. `contains` 按字面子串匹配, `%` 和 `_` 是普通字符.
 - 使用 `&&`, `||`, `!` 和括号组合条件, 逻辑优先级为 `!`, `&&`, `||`. 最多 256 个条件和逻辑运算符, 括号和取反最多嵌套 64 层.
 - `parsed_body_type` 仅支持 `=` 和 `!=`, 值为 `"NONE"`, `"FAILED"`, `"FORM"`, `"JSON"`.
-- `raw_body` 支持 `=`, `!=`, `contains`, 将查询字符串按 JSON 转义规则解析后编码为 UTF-8 字节, 匹配已存储的原始请求体. `raw_body = "asd"` 比较完整内容, `contains(raw_body, "asd")` 搜索字节子串, `contains(raw_body, "\u0000")` 搜索 NUL 字节. `%` 和 `_` 按普通字节处理. 请求体无需是有效的 UTF-8, 查询也不会按 Content-Type 转换编码或解析内容.
+- `raw_body` 支持 `=`, `!=`, `contains`, 将查询字符串按上述转义规则解析后编码为 UTF-8 字节, 匹配已存储的原始请求体. `raw_body = "asd"` 比较完整内容, `contains(raw_body, "asd")` 搜索字节子串, `contains(raw_body, "\u0000")` 搜索 NUL 字节. `%` 和 `_` 按普通字节处理. 请求体无需是有效的 UTF-8, 查询也不会按 Content-Type 转换编码或解析内容.
 - `error_log = null` 表示没有错误, `error_log != null` 表示有错误. 其他文本比较及其取反不匹配空值.
 - 时间支持 RFC3339, `YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`, 日期和时间之间也可用 `T`, 秒后允许小数. 仅日期表示零点, 相等比较匹配该时刻而非一整天. 未写偏移时按浏览器当地时区解释; 夏令时导致当地时间不存在或对应两个时刻时, 需要显式偏移, 例如 `"2026-11-01T01:30:00-07:00"`.
 - 过滤在数据库分页前执行, 总数为匹配条数. 支持的字段见上表, 不支持 Header 过滤, 也不支持 Body, Query 或 extra_info 按键过滤.

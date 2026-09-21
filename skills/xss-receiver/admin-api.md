@@ -159,9 +159,9 @@ and `data` contains the requested page in descending ID order. `page` defaults t
 | DNS only  | `query_name`, `query_type`, `query_class`                                |
 
 - `id` and `client_port` take 32-bit integers, without quotes. Integers and timestamps support `=`, `!=`, `<`, `<=`, `>`, `>=`.
-- Text fields take JSON double-quoted strings and support case-sensitive `=`, `!=`, and `contains(field, "text")`. The substring is literal, including `%`, `_`, and backslashes; use JSON escaping within strings.
+- Text fields take single- or double-quoted strings and support case-sensitive `=`, `!=`, and `contains(field, "text")`. Strings support JSON escapes (including `\uXXXX`) and `\'`; for example, `'\u4e2d\u6587'` is equivalent to `"中文"`. The substring is literal, including `%`, `_`, and escaped backslashes.
 - `parsed_body_type` supports only `=` and `!=` with `"NONE"`, `"FAILED"`, `"FORM"`, or `"JSON"`.
-- `raw_body` supports `=`, `!=`, and `contains` with JSON double-quoted strings. The decoded string is encoded as UTF-8 and bound as `bytea`: equality compares the entire stored body, and `contains` searches for a literal byte substring. For example, `raw_body = "asd"`, `raw_body != ""`, or `contains(raw_body, "\u0000")`. Invalid UTF-8 bytes in the body are allowed; the body is not decoded or parsed. Query encoding does not depend on Content-Type. Ordinary text fields reject NUL characters.
+- `raw_body` supports `=`, `!=`, and `contains` with single- or double-quoted strings. The decoded string is encoded as UTF-8 and bound as `bytea`: equality compares the entire stored body, and `contains` searches for a literal byte substring. For example, `raw_body = "asd"`, `raw_body != ""`, or `contains(raw_body, "\u0000")`. Invalid UTF-8 bytes in the body are allowed; the body is not decoded or parsed. Query encoding does not depend on Content-Type. Ordinary text fields reject NUL characters.
 - `error_log = null` and `error_log != null` check for absent/present errors. Other text comparisons, including their negations, do not match null values.
 - Combine conditions with `&&`, `||`, `!`, and parentheses. Logical precedence is `!`, then `&&`, then `||`.
 - `create_time` accepts RFC3339, `YYYY-MM-DD`, or `YYYY-MM-DD HH:mm:ss`. `T` can replace the space and fractional seconds are accepted. Dates mean midnight, not a whole-day range.

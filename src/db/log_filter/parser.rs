@@ -42,7 +42,7 @@ impl Condition {
     pub fn string(&self) -> Result<&str> {
         match &self.value {
             Value::String(value) => Ok(value),
-            _ => Err(self.error(format!("{} requires a double-quoted string", self.field))),
+            _ => Err(self.error(format!("{} requires a quoted string", self.field))),
         }
     }
 
@@ -209,27 +209,41 @@ impl Parser<'_> {
         })
     }
 
+    fn string(&mut self, quote: char) -> Result<String> {
+        self.offset += 1;
+        // Normalize quotes and apostrophe escapes, then use JSON to decode the rest.
+        let mut json = String::from("\"");
+        let mut escaped = false;
+        for (offset, character) in self.remaining().char_indices() {
+            if escaped {
+                if character != '\'' {
+                    json.push('\\');
+                }
+                json.push(character);
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == quote {
+                json.push('"');
+                let value = serde_json::from_str(&json)
+                    .map_err(|error| self.error(&format!("invalid string: {error}")))?;
+                self.offset += offset + 1;
+                return Ok(value);
+            } else {
+                if character == '"' {
+                    json.push('\\');
+                }
+                json.push(character);
+            }
+        }
+        Err(self.error("unterminated string"))
+    }
+
     fn value(&mut self) -> Result<Value> {
         self.skip_whitespace();
         let start = self.offset;
-        if self.take("\"") {
-            let mut escaped = false;
-            let mut end = None;
-            for (offset, character) in self.remaining().char_indices() {
-                if escaped {
-                    escaped = false;
-                } else if character == '\\' {
-                    escaped = true;
-                } else if character == '"' {
-                    end = Some(self.offset + offset + 1);
-                    break;
-                }
-            }
-            let end = end.ok_or_else(|| self.error("unterminated string"))?;
-            let value: String = serde_json::from_str(&self.input[start..end])
-                .map_err(|error| self.error(&format!("invalid string: {error}")))?;
-            self.offset = end;
-            return Ok(Value::String(value));
+        if let Some(quote @ ('"' | '\'')) = self.remaining().chars().next() {
+            return self.string(quote).map(Value::String);
         }
         if self.take("null") {
             return Ok(Value::Null);
@@ -243,7 +257,7 @@ impl Parser<'_> {
             .take_while(u8::is_ascii_digit)
             .count();
         if digits == 0 {
-            return Err(self.error("expected a double-quoted string, integer or null"));
+            return Err(self.error("expected a quoted string, integer or null"));
         }
         self.offset += digits;
         let number = self.input[start..self.offset]

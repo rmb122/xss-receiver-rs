@@ -35,7 +35,11 @@
                 <p>
                   字段: <code>{{ fields }}</code>
                 </p>
-                <p>字符串使用双引号和 JSON 转义, 数字不加引号. 字段名和值区分大小写.</p>
+                <p>
+                  字符串使用单引号或双引号, 支持 JSON 转义和 <code>\'</code>, 例如
+                  <code>'\u4e2d\u6587'</code> 等同于 <code>"中文"</code>. 数字不加引号.
+                  字段名和值区分大小写.
+                </p>
                 <p>
                   数字和时间支持 <code>{{ '= != < <= > >=' }}</code
                   >. 文本支持 <code>= != contains(field, "text")</code>, contains 按字面包含匹配.

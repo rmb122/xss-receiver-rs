@@ -252,6 +252,27 @@ mod tests {
     }
 
     #[test]
+    fn parses_single_and_double_quoted_strings_with_escapes() {
+        for (input, expected) in [
+            (
+                r#"path = 'it\'s "quoted"\\\n\u4e2d'"#,
+                "it's \"quoted\"\\\n中",
+            ),
+            (
+                r#"path = "it\'s \"quoted\"\\\n\u4e2d""#,
+                "it's \"quoted\"\\\n中",
+            ),
+            (r#"contains(raw_body, '\uD83D\uDE00\u0000')"#, "\u{1f600}\0"),
+            (r#"path = '\\u4e2d\\'"#, "\\u4e2d\\"),
+        ] {
+            let Expression::Condition(condition) = parser::parse(input).unwrap().unwrap() else {
+                panic!("expected comparison: {input}")
+            };
+            assert_eq!(condition.string().unwrap(), expected, "{input}");
+        }
+    }
+
+    #[test]
     fn rejects_incomplete_expressions_and_reports_character_positions() {
         for input in [
             "id = 1 &&",
@@ -260,6 +281,10 @@ mod tests {
             "id = 1 trailing",
             "contains(path)",
             r#"path = "unterminated"#,
+            r#"path = 'mismatched""#,
+            r#"path = 'trailing\'"#,
+            r#"path = '\u123'"#,
+            r#"path = '\q'"#,
             "id = 2147483648",
             "id = 1.5",
         ] {
@@ -282,10 +307,10 @@ mod tests {
                 "must be NONE, FAILED, FORM or JSON",
             ),
             ("error_log < null", "null supports only"),
-            ("client_ip = null", "requires a double-quoted string"),
+            ("client_ip = null", "requires a quoted string"),
             (r#"raw_body > "abc""#, "raw_body supports only"),
-            ("raw_body = null", "requires a double-quoted string"),
-            ("contains(raw_body, 1)", "requires a double-quoted string"),
+            ("raw_body = null", "requires a quoted string"),
+            ("contains(raw_body, 1)", "requires a quoted string"),
         ] {
             let filter = LogFilter::parse(Some(input), None).unwrap();
             let error = filter.http().err().expect("invalid HTTP filter accepted");
