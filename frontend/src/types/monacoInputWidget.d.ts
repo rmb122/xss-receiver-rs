@@ -23,6 +23,10 @@ declare module 'monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetContr
   export const SnippetController2: { readonly ID: string }
 }
 
+declare module 'monaco-editor/esm/vs/editor/contrib/placeholderText/browser/placeholderTextContribution.js' {
+  export const PlaceholderTextContribution: { readonly ID: string }
+}
+
 declare module 'monaco-editor/esm/vs/editor/standalone/common/standaloneTheme.js' {
   import type { IDisposable } from 'monaco-editor'
 

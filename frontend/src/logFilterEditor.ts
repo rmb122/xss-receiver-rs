@@ -2,6 +2,7 @@ import { monaco } from './monaco'
 import { setARIAContainer } from 'monaco-editor/esm/vs/base/browser/ui/aria/aria.js'
 import { EditorExtensionsRegistry } from 'monaco-editor/esm/vs/editor/browser/editorExtensions.js'
 import { CodeEditorWidget } from 'monaco-editor/esm/vs/editor/browser/widget/codeEditor/codeEditorWidget.js'
+import { PlaceholderTextContribution } from 'monaco-editor/esm/vs/editor/contrib/placeholderText/browser/placeholderTextContribution.js'
 import { SnippetController2 } from 'monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2.js'
 import { SuggestController } from 'monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js'
 import {
@@ -24,12 +25,13 @@ export function createLogFilterEditor(
     setARIAContainer(document.body)
   }
 
-  // Match VS Code's SuggestEnabledInput: simple input context, with only completion contributions.
+  // Use the simple input context with completion and placeholder contributions.
   const editor = instantiationService.createInstance(CodeEditorWidget, container, options, {
     isSimpleWidget: true,
     contributions: EditorExtensionsRegistry.getSomeEditorContributions([
       SuggestController.ID,
       SnippetController2.ID,
+      PlaceholderTextContribution.ID,
     ]),
   })
   const keybindings = StandaloneServices.get(IKeybindingService) as StandaloneKeybindingService
