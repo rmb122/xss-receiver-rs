@@ -97,7 +97,7 @@ xss-receiver-rs <config_file>
 
 ## Log Filtering
 
-HTTP and DNS log pages support expression filters. Click Filter to show the input, then press Enter or Apply to submit; Clear restores all logs. The question mark button on the right of the input opens syntax and field help.
+HTTP and DNS log pages support expression filters. Click Filter to show the input with syntax highlighting and contextual suggestions for fields, operators, and values. Press Ctrl+Space to trigger suggestions, Enter or Tab to accept a completion, and Esc to dismiss suggestions. With suggestions closed, press Enter or Apply to submit; Clear restores all logs. The question mark button on the right of the input opens syntax and field help.
 Pagination and refresh use the applied filter. Invalid input preserves the last valid results and reports the error position.
 
 ```text

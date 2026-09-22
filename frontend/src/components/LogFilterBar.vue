@@ -2,17 +2,12 @@
   <div v-if="visible || loadError" class="px-4 pb-4">
     <div v-if="visible" class="pa-1" />
     <form v-if="visible" class="d-flex align-start ga-2 flex-wrap" @submit.prevent="emit('apply')">
-      <v-text-field
+      <LogFilterInput
         v-model="model"
-        label="过滤表达式"
+        :kind="kind"
         :placeholder="example"
-        :error-messages="error"
-        hide-details="auto"
-        variant="outlined"
-        density="compact"
-        class="filter-input"
-        spellcheck="false"
-        autocomplete="off"
+        :error="error"
+        @apply="emit('apply')"
       >
         <template #append-inner>
           <v-menu location="bottom end" :close-on-content-click="false" max-width="640">
@@ -31,6 +26,10 @@
               <v-card-text class="filter-help d-flex flex-column ga-2">
                 <p>
                   <code>{{ example }}</code>
+                </p>
+                <p>
+                  输入时自动提示, Ctrl+Space 手动唤出提示. Enter 或 Tab 接受补全, Esc 关闭提示;
+                  提示关闭时 Enter 应用过滤.
                 </p>
                 <p>
                   字段: <code>{{ fields }}</code>
@@ -72,9 +71,11 @@
             </v-card>
           </v-menu>
         </template>
-      </v-text-field>
-      <v-btn type="submit" color="primary" :loading="applying">应用</v-btn>
-      <v-btn type="button" variant="tonal" @click="emit('clear')">清空</v-btn>
+      </LogFilterInput>
+      <div class="filter-actions d-flex align-center ga-2">
+        <v-btn type="submit" color="primary" :loading="applying">应用</v-btn>
+        <v-btn type="button" variant="tonal" @click="emit('clear')">清空</v-btn>
+      </div>
     </form>
     <v-alert v-if="loadError" type="error" variant="tonal" density="compact" class="mt-2">
       {{ loadError }}. 正在显示上次成功加载的结果.
@@ -84,22 +85,22 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import LogFilterInput from '@/components/LogFilterInput.vue'
+import { getLogFilterFields, type LogFilterKind } from '@/log-filter'
 
 const model = defineModel<string>({ required: true })
 const props = defineProps<{
-  kind: 'http' | 'dns'
+  kind: LogFilterKind
   visible: boolean
   error: string
   loadError: string
   applying: boolean
 }>()
 const emit = defineEmits<{ apply: []; clear: [] }>()
-const fields = computed(
-  () =>
-    'id, client_ip, client_port, location, create_time, error_log, ' +
-    (props.kind === 'http'
-      ? 'method, path, raw_query, raw_body, parsed_body_type'
-      : 'query_name, query_type, query_class'),
+const fields = computed(() =>
+  getLogFilterFields(props.kind)
+    .map((field) => field.name)
+    .join(', '),
 )
 const example = computed(() =>
   props.kind === 'http'
@@ -109,12 +110,10 @@ const example = computed(() =>
 </script>
 
 <style scoped>
-.filter-input {
-  flex: 1 1 320px;
-  min-width: 0;
+.filter-actions {
+  min-height: 40px;
 }
 
-.filter-input :deep(input),
 code {
   font-family: 'IBM Plex Mono', monospace;
 }

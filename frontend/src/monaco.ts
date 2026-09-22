@@ -15,6 +15,7 @@ import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 // @ts-ignore
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import { configureScriptCompletions } from './script-completion-provider'
+import { configureLogFilterLanguages } from './log-filter-language'
 
 self.MonacoEnvironment = {
   getWorker(_: any, label: string) {
@@ -33,6 +34,7 @@ monaco.languages.register({
 })
 
 configureScriptCompletions()
+configureLogFilterLanguages()
 
 monaco.languages.register({
   id: 'json',
