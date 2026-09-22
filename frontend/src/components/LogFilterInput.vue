@@ -40,9 +40,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { monaco } from '@/monaco'
-import { createLogFilterEditor } from '@/log-filter-editor'
-import { logFilterLanguageId } from '@/log-filter-language'
-import type { LogFilterKind } from '@/log-filter'
+import { createLogFilterEditor } from '@/logFilterEditor'
+import { logFilterLanguageId } from '@/logFilterLanguage'
+import type { LogFilterKind } from '@/logFilter'
 
 const model = defineModel<string>({ required: true })
 const props = defineProps<{

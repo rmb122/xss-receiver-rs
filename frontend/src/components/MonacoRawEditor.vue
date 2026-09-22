@@ -23,7 +23,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { monaco } from '@/monaco'
 import { typescript, type IDisposable } from 'monaco-editor'
-import { dnsScriptEngineTypes, httpScriptEngineTypes } from '@/script-engine-types'
+import { dnsScriptEngineTypes, httpScriptEngineTypes } from '@/scriptEngineTypes'
 import { SUPPORTED_ENCODINGS } from '@/utils/encoding'
 
 const props = withDefaults(

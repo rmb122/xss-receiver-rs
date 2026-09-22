@@ -5,7 +5,7 @@ import {
   tokenizeLogFilter,
   type FilterSuggestion,
   type LogFilterKind,
-} from './log-filter'
+} from './logFilter'
 
 export function logFilterLanguageId(kind: LogFilterKind): string {
   return 'log-filter-' + kind

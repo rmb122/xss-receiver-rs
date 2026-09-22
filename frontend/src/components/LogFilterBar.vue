@@ -86,7 +86,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import LogFilterInput from '@/components/LogFilterInput.vue'
-import { getLogFilterFields, type LogFilterKind } from '@/log-filter'
+import { getLogFilterFields, type LogFilterKind } from '@/logFilter'
 
 const model = defineModel<string>({ required: true })
 const props = defineProps<{

@@ -14,8 +14,8 @@ import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 // @ts-ignore
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import { configureScriptCompletions } from './script-completion-provider'
-import { configureLogFilterLanguages } from './log-filter-language'
+import { configureScriptCompletions } from './scriptCompletionProvider'
+import { configureLogFilterLanguages } from './logFilterLanguage'
 
 self.MonacoEnvironment = {
   getWorker(_: any, label: string) {
