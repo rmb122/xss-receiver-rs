@@ -1,14 +1,9 @@
 ---
 name: xss-receiver
 description: >-
-  Operate the xss-receiver-rs platform: write its programmable HTTP/DNS handler
-  scripts and modules (.js / .hjs / .djs / .djson) and drive its admin HTTP API to upload script
-  files, create routes, and fetch received HTTP/DNS request logs. Useful for CTF
-  and security testing (XSS data collection, SSRF/OOB probing, DNS Log). Use when
-  working with an xss-receiver-rs instance, writing its script-engine handlers
-  (request/response/storage/cache/http), or automating it via curl/HTTP. Trigger
-  terms: xss-receiver, .js, .hjs, .djs, .djson, script engine, HTTP/DNS route,
-  admin API, upload script, create route, fetch logs, CTF, security testing.
+  Operate the xss-receiver-rs platform: write its programmable HTTP/DNS handler scripts and drive 
+  its admin HTTP API to upload script files, create routes, and fetch received HTTP/DNS request 
+  logs. Useful for CTF and security testing (XSS data collection, SSRF/OOB probing, DNS Log, file hosting).
 ---
 
 # xss-receiver
