@@ -1,77 +1,13 @@
-use std::sync::Arc;
-
-use axum::{
-    extract::FromRef,
-    http::{header::AUTHORIZATION, request::Parts},
-    response::IntoResponse,
-};
-use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::utils::response::Response;
-
-const AUTHORIZATION_PREFIX: &str = "Bearer ";
-
-/// A generic struct for holding the claims of a JWT token.
-#[derive(Debug, Deserialize)]
-pub struct Claims<T>(pub T);
-
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExpirablePayload<T> {
+struct ExpirablePayload<T> {
     exp: i64,
 
     #[serde(flatten)]
     payload: T,
-}
-
-impl<S, T> axum::extract::FromRequestParts<S> for Claims<T>
-where
-    Arc<JwtManager>: FromRef<S>,
-    S: Send + Sync,
-    T: DeserializeOwned,
-{
-    type Rejection = AuthError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // 先从 headers 里面获取
-        let mut token = if let Some(token) = parts.headers.get(AUTHORIZATION) {
-            token.to_str().map_err(|_| AuthError {})?.to_owned()
-        } else {
-            // 其次使用 cookie
-            let jar = CookieJar::from_headers(&parts.headers);
-            if let Some(token) = jar.get(AUTHORIZATION.as_str()) {
-                token.value_trimmed().to_owned()
-            } else {
-                return Err(AuthError {});
-            }
-        };
-
-        let trimmed = token.trim();
-        token = trimmed
-            .strip_prefix(AUTHORIZATION_PREFIX)
-            .unwrap_or(trimmed)
-            .trim()
-            .to_owned();
-
-        let decoder = Arc::<JwtManager>::from_ref(state);
-        let token_data: TokenData<ExpirablePayload<T>> =
-            decoder.decode(&token).map_err(|_| AuthError {})?;
-
-        Ok(Claims(token_data.claims.payload))
-    }
-}
-
-pub struct AuthError;
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> axum::http::Response<axum::body::Body> {
-        Response::<()>::new()
-            .code(400)
-            .msg("token verify failed")
-            .into_response()
-    }
 }
 
 #[derive(Clone)]
@@ -94,12 +30,17 @@ impl JwtManager {
         };
     }
 
-    pub fn decode<T: DeserializeOwned>(&self, token: &str) -> Result<TokenData<T>, AuthError> {
-        if let Ok(payload) = jsonwebtoken::decode::<T>(token, &self.decoding_key, &self.validation)
-        {
-            return Ok(payload);
-        }
-        return Err(AuthError {});
+    pub fn decode_token<T: DeserializeOwned>(
+        &self,
+        token: &str,
+    ) -> jsonwebtoken::errors::Result<T> {
+        Ok(jsonwebtoken::decode::<ExpirablePayload<T>>(
+            token,
+            &self.decoding_key,
+            &self.validation,
+        )?
+        .claims
+        .payload)
     }
 
     pub fn encode_token<T: Serialize>(&self, claim: T) -> anyhow::Result<String> {

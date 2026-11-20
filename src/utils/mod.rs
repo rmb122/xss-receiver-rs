@@ -1,3 +1,4 @@
+pub mod api_token;
 pub mod diesel_bytea;
 pub mod dns_server;
 pub mod ip2region;

@@ -12,6 +12,7 @@ pub mod http_log;
 pub mod http_route;
 pub mod log_filter;
 pub mod system_log;
+pub mod token;
 pub mod user;
 
 #[derive(Debug, thiserror::Error)]

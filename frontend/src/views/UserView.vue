@@ -1,91 +1,86 @@
 <template>
-  <v-container fluid>
-    <v-card>
-      <v-card-title class="d-flex align-center">
-        <v-icon class="mr-2">mdi-account-group</v-icon>
-        用户管理
-        <v-spacer />
-        <v-btn
-          v-if="userStore.isAdmin"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openCreateDialog"
-        >
-          新建用户
-        </v-btn>
-      </v-card-title>
-      <v-progress-linear v-if="loading" indeterminate color="primary" />
-      <v-data-table
-        :headers="headers"
-        :items="users"
-        :loading="loading"
-        density="comfortable"
-        no-data-text="暂无用户数据"
-        items-per-page="-1"
+  <AuthCard>
+    <template #actions>
+      <v-btn
+        v-if="userStore.isAdmin"
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openCreateDialog"
       >
-        <template #item.create_time="{ item }">
-          {{ formatTime(item.create_time) }}
-        </template>
+        新建用户
+      </v-btn>
+    </template>
+    <v-progress-linear v-if="loading" indeterminate color="primary" />
+    <v-data-table
+      :headers="headers"
+      :items="users"
+      :loading="loading"
+      density="comfortable"
+      no-data-text="暂无用户数据"
+      items-per-page="-1"
+    >
+      <template #item.create_time="{ item }">
+        {{ formatTime(item.create_time) }}
+      </template>
 
-        <template #item.actions="{ item }">
-          <v-btn
-            v-if="userStore.isAdmin || item.id === userStore.user?.id"
-            icon
-            size="small"
-            variant="text"
-            color="primary"
-            @click="openEditDialog(item)"
-          >
-            <v-icon>mdi-pencil</v-icon>
-          </v-btn>
-          <v-btn
-            v-if="userStore.isAdmin && item.id !== 1"
-            icon
-            size="small"
-            variant="text"
-            color="error"
-            @click="handleDelete(item)"
-          >
-            <v-icon>mdi-delete</v-icon>
-          </v-btn>
-        </template>
+      <template #item.actions="{ item }">
+        <v-btn
+          v-if="userStore.isAdmin || item.id === userStore.user?.id"
+          icon
+          size="small"
+          variant="text"
+          color="primary"
+          @click="openEditDialog(item)"
+        >
+          <v-icon>mdi-pencil</v-icon>
+        </v-btn>
+        <v-btn
+          v-if="userStore.isAdmin && item.id !== 1"
+          icon
+          size="small"
+          variant="text"
+          color="error"
+          @click="handleDelete(item)"
+        >
+          <v-icon>mdi-delete</v-icon>
+        </v-btn>
+      </template>
 
-        <template #bottom />
-      </v-data-table>
+      <template #bottom />
+    </v-data-table>
+  </AuthCard>
+
+  <!-- Create/edit dialog -->
+  <v-dialog v-model="dialogVisible" max-width="500">
+    <v-card>
+      <v-card-title>{{ isEditing ? '编辑用户' : '新建用户' }}</v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-model="form.username"
+          label="用户名"
+          variant="outlined"
+          density="compact"
+          class="mb-2"
+        />
+        <v-text-field
+          v-model="form.password"
+          :label="isEditing ? '新密码（留空则不修改）' : '密码'"
+          type="password"
+          variant="outlined"
+          density="compact"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="dialogVisible = false">取消</v-btn>
+        <v-btn color="primary" variant="flat" :loading="saving" @click="handleSave">
+          {{ isEditing ? '保存' : '创建' }}
+        </v-btn>
+      </v-card-actions>
     </v-card>
+  </v-dialog>
 
-    <!-- 创建/编辑对话框 -->
-    <v-dialog v-model="dialogVisible" max-width="500">
-      <v-card>
-        <v-card-title>{{ isEditing ? '编辑用户' : '新建用户' }}</v-card-title>
-        <v-card-text>
-          <v-text-field
-            v-model="form.username"
-            label="用户名"
-            variant="outlined"
-            density="compact"
-            class="mb-2"
-          />
-          <v-text-field
-            v-model="form.password"
-            :label="isEditing ? '新密码（留空则不修改）' : '密码'"
-            type="password"
-            variant="outlined"
-            density="compact"
-          />
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="dialogVisible = false">取消</v-btn>
-          <v-btn color="primary" variant="flat" :loading="saving" @click="handleSave">
-            {{ isEditing ? '保存' : '创建' }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <ConfirmDialog ref="confirmDialog" />
-  </v-container>
+  <ConfirmDialog ref="confirmDialog" />
 </template>
 
 <script setup lang="ts">
@@ -94,6 +89,7 @@ import { getAllUsers, createUser, updateUser, deleteUser } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { showSuccessToast } from '@/utils/toast'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AuthCard from '@/components/AuthCard.vue'
 import type { UserResponse } from '@/types/user'
 import type { DataTableHeader } from 'vuetify'
 import { formatTime } from '@/utils/format'
@@ -127,6 +123,7 @@ function resetForm() {
 async function fetchUsers() {
   loading.value = true
   try {
+    await userStore.getInitialLoadPromise()
     if (userStore.isAdmin) {
       users.value = await getAllUsers()
     } else if (userStore.user) {

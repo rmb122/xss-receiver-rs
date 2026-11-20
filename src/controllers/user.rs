@@ -10,7 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Context,
-    controllers::{AppError, index::get_real_addr_from_request},
+    controllers::{
+        AppError,
+        auth::{AuthenticatedUser, LoggedUser},
+        index::get_real_addr_from_request,
+    },
     db::{
         system_log::helper::insert_system_log,
         user::{
@@ -21,14 +25,8 @@ use crate::{
             model::{ADMIN_ID, User},
         },
     },
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
-
-#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LoggedUser {
-    pub id: i32,
-    pub username: String,
-}
 
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct LoginRequest {
@@ -108,7 +106,7 @@ pub async fn login(
 
 /// 获取当前登录用户
 #[utoipa::path(get, path = "/current", responses((status = OK, body = Response<LoggedUser>)))]
-pub async fn current(Claims(user): Claims<LoggedUser>) -> Response<LoggedUser> {
+pub async fn current(AuthenticatedUser { user, .. }: AuthenticatedUser) -> Response<LoggedUser> {
     Response::ok().payload(user)
 }
 
@@ -159,13 +157,15 @@ pub(crate) fn check_admin(user: &LoggedUser) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 创建用户
+/// Create a user through an administrator's password-login session.
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<UserResponse>)))]
 pub async fn create_user(
     State(ctx): State<Context>,
-    Claims(user): Claims<LoggedUser>,
+    auth: AuthenticatedUser,
     Json(request): Json<CreateUserRequest>,
 ) -> Result<Response<UserResponse>, AppError> {
+    auth.require_session()?;
+    let user = auth.user;
     check_admin(&user)?;
 
     let mut conn = ctx.db_conn().await?;
@@ -174,13 +174,15 @@ pub async fn create_user(
     Ok(Response::<UserResponse>::ok().payload(new_user.into()))
 }
 
-/// 删除用户
+/// Delete a user through an administrator's password-login session.
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_user(
     State(ctx): State<Context>,
-    Claims(user): Claims<LoggedUser>,
+    auth: AuthenticatedUser,
     Json(request): Json<DeleteUserRequest>,
 ) -> Result<Response<bool>, AppError> {
+    auth.require_session()?;
+    let user = auth.user;
     check_admin(&user)?;
 
     let mut conn = ctx.db_conn().await?;
@@ -197,7 +199,7 @@ pub async fn delete_user(
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<UserResponse>>)))]
 pub async fn get_users(
     State(ctx): State<Context>,
-    Claims(user): Claims<LoggedUser>,
+    AuthenticatedUser { user, .. }: AuthenticatedUser,
 ) -> Result<Response<Vec<UserResponse>>, AppError> {
     check_admin(&user)?;
 
@@ -208,13 +210,17 @@ pub async fn get_users(
     Ok(Response::<Vec<UserResponse>>::ok().payload(user_responses))
 }
 
-/// 更新用户
+/// Update a user. Password changes require a password-login session.
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<UserResponse>)))]
 pub async fn update_user(
     State(ctx): State<Context>,
-    Claims(user): Claims<LoggedUser>,
+    auth: AuthenticatedUser,
     Json(request): Json<UpdateUserRequest>,
 ) -> Result<Response<UserResponse>, AppError> {
+    if request.password.is_some() {
+        auth.require_session()?;
+    }
+    let user = auth.user;
     if user.id != request.user_id {
         // 只能修改自己的
         check_admin(&user)?;

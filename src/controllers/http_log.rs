@@ -6,8 +6,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::controllers::auth::AuthenticatedUser;
 use crate::controllers::log_query::LogQuery;
-use crate::controllers::user::LoggedUser;
 use crate::{
     Context,
     controllers::AppError,
@@ -15,7 +15,7 @@ use crate::{
         helper::{get_http_log_raw_body, get_http_logs_paginated},
         model::HttpLog,
     },
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
 
 // 分页响应
@@ -31,7 +31,7 @@ pub struct PaginatedHttpLogResponse {
 #[utoipa::path(get, path = "/", params(LogQuery), responses((status = OK, body = Response<PaginatedHttpLogResponse>)))]
 pub async fn get_http_logs(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Query(request): Query<LogQuery>,
 ) -> Result<Response<PaginatedHttpLogResponse>, AppError> {
     let filter = request.filter()?;
@@ -58,7 +58,7 @@ pub async fn get_http_logs(
 )]
 pub async fn get_http_log_raw_body_response(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Path(id): Path<i32>,
 ) -> Result<impl IntoResponse, AppError> {
     let mut conn = ctx.db_conn().await?;

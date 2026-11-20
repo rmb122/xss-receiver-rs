@@ -289,7 +289,27 @@ Files:
 - `script-engine.md`: script-engine API (`request` / `response` / `storage` / `cache` / `http` and helpers) with examples.
 - `admin-api.md`: admin API (auth / files / routes / logs) with an end-to-end curl example.
 
-Usage: point your AI assistant at `skills/xss-receiver/SKILL.md`. Because the base path (host, `admin_prefix`) is deployment-specific, the skill instructs the AI to ask a human for it before making API calls.
+Open **Authentication management > Token management** in the panel to issue a dedicated
+AI token. Tokens default to no expiry, or you can specify an expiration time. You can
+also restrict a token to one IPv4/IPv6 client address; leave the IP field empty for no restriction. The secret
+is shown only once. Users manage their own tokens; the administrator can view and revoke
+all users' tokens. Tokens follow their owner's permissions except that creating/deleting
+users, changing passwords, and issuing new tokens require a password-login session.
+Tokens stop working on revocation or account deletion. Restarts, JWT key changes, and
+password changes do not invalidate them.
+
+Point your AI assistant at `skills/xss-receiver/SKILL.md` and provide configuration through:
+
+```bash
+export XSS_RECEIVER_CONFIG='{"server_base":"https://example.com:8000","admin_prefix":"/super_admin/","token":"xrt_...","dns_log_suffix":"dns.example.com"}'
+```
+
+`server_base` includes the scheme, host, and optional port. `admin_prefix` is the panel path
+starting with `/`, without `/api` or a frontend hash route; it must not be `/`. Join these
+fields and append `/api` to obtain the API URL. `dns_log_suffix` supplies the domain suffix
+for DNS Log tasks. The skill reads the environment first and uses the token directly when
+configuration is complete, asking only for information still needed by the task. Manually
+supplied configuration and username/password login are also supported.
 
 ## Local Development
 

@@ -11,10 +11,10 @@ use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
 use crate::{
-    controllers::user::LoggedUser,
+    controllers::auth::AuthenticatedUser,
     controllers::{AppError, Context},
     storage::Entry,
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
 
 // ==================== 请求/响应结构体 ====================
@@ -90,7 +90,7 @@ fn basename(path: &str) -> &str {
 )]
 pub async fn list(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<PathRequest>,
 ) -> Result<Response<ListResponse>, AppError> {
     let entries = ctx.storage.user().list(&req.path)?;
@@ -105,7 +105,7 @@ pub async fn list(
 )]
 pub async fn list_all(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
 ) -> Result<Response<ListAllResponse>, AppError> {
     let files = ctx.storage.user().list_all_files()?;
     Ok(Response::ok().payload(ListAllResponse { files }))
@@ -120,7 +120,7 @@ pub async fn list_all(
 )]
 pub async fn create(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<PathRequest>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().create_file(&req.path)?;
@@ -135,7 +135,7 @@ pub async fn create(
 )]
 pub async fn mkdir(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<PathRequest>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().mkdir(&req.path)?;
@@ -150,7 +150,7 @@ pub async fn mkdir(
 )]
 pub async fn remove(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<PathRequest>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().remove(&req.path)?;
@@ -165,7 +165,7 @@ pub async fn remove(
 )]
 pub async fn rename(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<RenameRequest>,
 ) -> Result<Response<bool>, AppError> {
     ctx.storage.user().rename(&req.src, &req.dst)?;
@@ -180,7 +180,7 @@ pub async fn rename(
 )]
 pub async fn upload(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     mut multipart: Multipart,
 ) -> Result<Response<bool>, AppError> {
     let mut path: Option<String> = None;
@@ -216,7 +216,7 @@ pub async fn upload(
 )]
 pub async fn upload_part(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     mut multipart: Multipart,
 ) -> Result<Response<PartUploadResponse>, AppError> {
     let mut chunk_content: Option<Vec<u8>> = None;
@@ -240,7 +240,7 @@ pub async fn upload_part(
 )]
 pub async fn merge_parts(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(req): Json<MergeRequest>,
 ) -> Result<Response<bool>, AppError> {
     let target_file = ctx.storage.user().open(
@@ -265,7 +265,7 @@ pub async fn merge_parts(
 )]
 pub async fn download(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Query(q): Query<PathQuery>,
 ) -> impl IntoResponse {
     let file_handle = ctx
@@ -288,7 +288,7 @@ pub async fn download(
 )]
 pub async fn stat(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Query(q): Query<PathQuery>,
 ) -> Result<Response<Entry>, AppError> {
     let entry = ctx.storage.user().stat(&q.path)?;
@@ -308,7 +308,7 @@ pub async fn stat(
 )]
 pub async fn download_log_file(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     axum::extract::Path(file): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     let file_handle = ctx.storage.log().open(&file, OpenOptions::new().read(true));

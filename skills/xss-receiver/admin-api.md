@@ -4,48 +4,69 @@ All management features are exposed over the admin HTTP API (the web admin UI ca
 same endpoints). This document is self-contained; you do not need access to the platform
 source to use it.
 
-## Before you start: get the base path from the human
+## Connection configuration
 
-The base path differs for every deployment and is not guessable. Every example below uses
-**placeholder** host/port and `admin_prefix` values — do not reuse them as real values.
-Before calling any endpoint, proactively ask the human for:
+First read `XSS_RECEIVER_CONFIG` from the environment. It contains JSON:
 
-- the instance host and port (e.g. `https://example.com:8000`),
-- the `admin_prefix` (e.g. `/super_admin/`; it is never `/`),
-- the login credentials (username / password).
+```json
+{
+  "server_base": "https://example.com:8000",
+  "admin_prefix": "/super_admin/",
+  "token": "xrt_...",
+  "dns_log_suffix": "dns.example.com"
+}
+```
 
-Then set `$BASE = <host>:<port><admin_prefix>/api` and use it consistently.
+`server_base` is the HTTP origin (scheme, host, optional port). `admin_prefix` is the
+panel path starting with `/`, without `/api` or a frontend hash route, and must not be
+`/`. Join them with `/api`, normalizing the joining slashes, to obtain `$BASE`.
+`token` becomes `$TOKEN` and is sent as a Bearer token. Do not print either the token
+or the complete configuration. See the end-to-end example for loading these fields in Bash.
+
+Use `dns_log_suffix` for DNS Log domains, for example `<unique-label>.dns.example.com`.
+It is required only for DNS tasks. It describes an existing DNS deployment; it does not
+configure delegation or create routes automatically.
+
+When configuration is missing, use details already supplied by the human and ask only
+for missing fields needed by the task. Invalid JSON is a configuration error to resolve
+before calling the API. All example addresses are placeholders, not deployment defaults.
 
 ## Conventions
 
 - **Base path**: `<admin_prefix>/api`. `admin_prefix` is a platform config value
   (e.g. `/super_admin/`, never `/`). Example: the login endpoint is
   `http://host:8000/super_admin/api/user/login`. Below, `$BASE` denotes
-  `<host>:<port><admin_prefix>/api` (obtained from the human, see above).
+  `<server_base><admin_prefix>/api` (from the configuration above).
 - **Response envelope**: every endpoint returns HTTP 200 with body
   `{ "code": number, "msg": string|null, "payload": any }`.
   - Success: `code == 200`, data in `payload`.
   - Failure: `code == 500` (business error, reason in `msg`) or `code == 400` (auth failure).
   - **Decide success by `code`, not by the HTTP status.**
-- **Pagination**: list endpoints take `?page=&page_size=` (page starts at 1; page_size 1-500,
+- **Pagination**: log list endpoints take `?page=&page_size=` (page starts at 1; page_size 1-500,
   default 20) and return `{ data, total, page, page_size }`.
 
 ## Authentication
 
-1. `POST $BASE/user/login` with body `{"username","password"}`.
-2. On success the response sets `Set-Cookie: authorization=<jwt>; Path=<admin_prefix>; HttpOnly`
-   (the token is **in the cookie, not in `payload`**).
-3. Authenticate subsequent requests either by:
-   - sending that cookie (with curl: `-c cookies.txt` to save, `-b cookies.txt` to reuse); or
-   - setting header `Authorization: <jwt>` (an optional `Bearer ` prefix is accepted).
+With a configured token, send `Authorization: Bearer $TOKEN` directly. No login or
+password is needed. A bare token is also accepted. The Authorization header takes
+precedence over the `authorization` cookie, even if the header contains an invalid token.
 
 ```bash
-# Log in and store the cookie in cookies.txt
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/user/current"
+```
+
+Alternatively, when the human supplies username/password credentials:
+
+1. `POST $BASE/user/login` with body `{"username":"...","password":"..."}`.
+2. On success, `Set-Cookie: authorization=<jwt>; Path=<admin_prefix>; HttpOnly` contains
+   the JWT; it is not returned in `payload`.
+3. Send that cookie or use its JWT value as `$TOKEN` in the examples below.
+
+```bash
+# Optional password login: save and reuse the cookie.
 curl -s -c cookies.txt -X POST "$BASE/user/login" \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<password>"}'
-
-# Verify the session
 curl -s -b cookies.txt "$BASE/user/current"
 ```
 
@@ -65,8 +86,12 @@ curl -s -b cookies.txt "$BASE/user/current"
 | POST   | `/file/merge`    | `{ chunk_ids, path }`     | Merge chunks into a file              |
 
 ```bash
+# Create the parent directory before uploading into it.
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/file/mkdir" \
+  -H 'Content-Type: application/json' -d '{"path":"hooks"}'
+
 # Upload a .hjs script to storage path hooks/collect.hjs
-curl -s -b cookies.txt -X POST "$BASE/file/upload" \
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/file/upload" \
   -F "path=hooks/collect.hjs" \
   -F "file=@collect.hjs"
 ```
@@ -85,7 +110,7 @@ Create/update body fields:
 ```jsonc
 {
   "pattern_kind": "PLAIN", // PLAIN (exact) | REGEX (regular expression)
-  "pattern": "/collect", // PLAIN = exact full path match; REGEX = a regex
+  "pattern": "/5cb4842a7587", // PLAIN = exact full path match; REGEX = a regex
   "priority": 0, // when multiple routes match, the highest priority wins
   "timeout": 1000, // script timeout in milliseconds
   "catalog": "default", // grouping label in the admin UI (any string)
@@ -96,20 +121,22 @@ Create/update body fields:
 }
 ```
 
-- Create/update **compile the route set immediately**; an invalid `handler` path fails the
-  request. Upload the handler file before creating the route.
+- Create/update **install the route set immediately**. Upload the handler file first;
+  script source is loaded when the route handles a request.
 - **For a static file, set `handler_kind` to `STATIC`** and point `handler` at the file; it
   is returned as-is (any file type). Only use `SCRIPT` when the response is built dynamically.
 - **Delete/update use the field `http_route_id`** (different from DNS routes).
 
 ```bash
-curl -s -b cookies.txt -X POST "$BASE/http_route" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "pattern_kind":"PLAIN","pattern":"/collect","priority":0,"timeout":1000,
+RECEIVER_PATH="/$(python3 -c 'import secrets; print(secrets.token_hex(6))')"
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/http_route" \
+  -H 'Content-Type: application/json' --data-binary @- <<JSON
+  {
+    "pattern_kind":"PLAIN","pattern":"$RECEIVER_PATH","priority":0,"timeout":1000,
     "catalog":"default","handler_kind":"SCRIPT","handler":"hooks/collect.hjs",
     "write_log":true,"comment":"collect xss"
-  }'
+  }
+JSON
 ```
 
 ## DNS route endpoints (`/dns_route`)
@@ -144,7 +171,7 @@ parsed_query, header, parsed_body_type, parsed_body, file, extra_info, error_log
 
 ```bash
 # Fetch the latest 20 HTTP requests (newest first)
-curl -s -b cookies.txt "$BASE/http_log?page=1&page_size=20"
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/http_log?page=1&page_size=20"
 ```
 
 ### Filter expressions
@@ -172,15 +199,15 @@ and `data` contains the requested page in descending ID order. `page` defaults t
 Use `--data-urlencode` so quotes, `&&`, and timezone offsets are encoded correctly:
 
 ```bash
-curl -s -G -b cookies.txt "$BASE/http_log" \
+curl -s -G -H "Authorization: Bearer $TOKEN" "$BASE/http_log" \
   --data-urlencode 'filter=client_ip = "192.0.2.1" && create_time < "2026-09-19 12:00:00"' \
   --data-urlencode 'timezone=Asia/Shanghai' \
   --data-urlencode 'page=1' --data-urlencode 'page_size=20'
 
-curl -s -G -b cookies.txt "$BASE/dns_log" \
+curl -s -G -H "Authorization: Bearer $TOKEN" "$BASE/dns_log" \
   --data-urlencode 'filter=query_type = "A" && !contains(query_name, "example.com")'
 
-curl -s -G -b cookies.txt "$BASE/http_log" \
+curl -s -G -H "Authorization: Bearer $TOKEN" "$BASE/http_log" \
   --data-urlencode 'filter=contains(raw_body, "asd") && method = "POST"'
 ```
 
@@ -190,38 +217,52 @@ curl -s -G -b cookies.txt "$BASE/http_log" \
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Placeholders — ask the human for the real host/port, admin_prefix, and credentials.
-HOST="http://127.0.0.1:8000"  # ask the human
-PREFIX="/super_admin"          # ask the human; must match the platform's admin_prefix
-BASE="$HOST$PREFIX/api"
-USER="admin"; PASS="<password>"  # ask the human
+# 1) Read the supplied JSON configuration. Do not enable shell tracing.
+read_config() {
+  python3 -c 'import json, os, sys; print(json.loads(os.environ["XSS_RECEIVER_CONFIG"])[sys.argv[1]])' "$1"
+}
+SERVER_BASE="$(read_config server_base)"
+ADMIN_PREFIX="$(read_config admin_prefix)"
+TOKEN="$(read_config token)"
+BASE="${SERVER_BASE%/}/${ADMIN_PREFIX#/}"
+BASE="${BASE%/}/api"
 
-# 1) Log in, save the cookie
-curl -s -c cookies.txt -X POST "$BASE/user/login" \
-  -H 'Content-Type: application/json' \
-  -d "{\"username\":\"$USER\",\"password\":\"$PASS\"}" > /dev/null
+# HTTP 200 can still contain an API error.
+check_response() {
+  python3 -c '
+import json, sys
+result = json.load(sys.stdin)
+if result["code"] != 200:
+    raise SystemExit(result.get("msg") or "API request failed")
+print(json.dumps(result, ensure_ascii=False))'
+}
 
-# 2) Write a script and upload it to hooks/collect.hjs
+# 2) Create the parent directory, write a script, and upload it.
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/file/mkdir" \
+  -H 'Content-Type: application/json' -d '{"path":"hooks"}' | check_response > /dev/null
+
 cat > collect.hjs <<'JS'
-storage.append('loot/hits.jsonl', JSON.stringify({
+storage.append('hits.jsonl', JSON.stringify({
   t: new Date().toISOString(), from: request.clientAddr, q: request.path
 }) + '\n')
 response.send('ok')
 export default { ok: true }
 JS
-curl -s -b cookies.txt -X POST "$BASE/file/upload" \
-  -F "path=hooks/collect.hjs" -F "file=@collect.hjs" > /dev/null
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/file/upload" \
+  -F "path=hooks/collect.hjs" -F "file=@collect.hjs" | check_response > /dev/null
 
-# 3) Create an HTTP route whose handler points to the script
-curl -s -b cookies.txt -X POST "$BASE/http_route" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "pattern_kind":"PLAIN","pattern":"/collect","priority":0,"timeout":1000,
+# 3) Generate a random public path and point its route to the script.
+RECEIVER_PATH="/$(python3 -c 'import secrets; print(secrets.token_hex(6))')"
+curl -s -H "Authorization: Bearer $TOKEN" -X POST "$BASE/http_route" \
+  -H 'Content-Type: application/json' --data-binary @- <<JSON | check_response > /dev/null
+  {
+    "pattern_kind":"PLAIN","pattern":"$RECEIVER_PATH","priority":0,"timeout":1000,
     "catalog":"default","handler_kind":"SCRIPT","handler":"hooks/collect.hjs",
     "write_log":true,"comment":"collect"
-  }' > /dev/null
+  }
+JSON
 
 # 4) Trigger it once, then read the latest logs
-curl -s "$HOST/collect" > /dev/null
-curl -s -b cookies.txt "$BASE/http_log?page=1&page_size=5"
+curl -s "${SERVER_BASE%/}${RECEIVER_PATH}" > /dev/null
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/http_log?page=1&page_size=5" | check_response
 ```

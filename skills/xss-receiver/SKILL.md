@@ -44,7 +44,7 @@ reading its source code. It helps with two kinds of tasks:
   reusable JavaScript modules from storage.
 - **Full request logging**: source address, headers, query, body, uploaded files, plus
   IP geolocation.
-- **Admin API + web admin UI**: JWT-authenticated; everything is callable under
+- **Admin API + web admin UI**: authenticated with login JWTs or dedicated API tokens; everything is callable under
   `<admin_prefix>/api/...`.
 
 ## File extension conventions
@@ -61,42 +61,78 @@ config points to:
 
 A `STATIC` HTTP handler can point to any file type and returns it verbatim.
 
+## Connection configuration
+
+Read `XSS_RECEIVER_CONFIG` from the environment before asking for connection details.
+Its value is a JSON object:
+
+```json
+{
+  "server_base": "https://example.com:8000",
+  "admin_prefix": "/super_admin/",
+  "token": "xrt_...",
+  "dns_log_suffix": "dns.example.com"
+}
+```
+
+- `server_base`: HTTP server origin, including scheme, host, and optional port.
+- `admin_prefix`: the configured panel path, starting with `/`; it must not be `/`.
+  Do not include `/api` or a frontend hash route.
+- `token`: a dedicated token issued from the panel's authentication management page,
+  or a login JWT. Send it as `Authorization: Bearer <token>`.
+- `dns_log_suffix`: the domain suffix delegated to this instance's DNS server. For DNS
+  Log tasks, use a unique label under this suffix, such as `<label>.dns.example.com`,
+  when configuring a route, triggering a lookup, and finding the corresponding logs.
+
+Build the API base URL by joining `server_base`, `admin_prefix`, and `/api` with one
+slash between parts. HTTP callback URLs use `server_base` and the HTTP route path.
+A configured token is sufficient: do not log in or ask for a password first.
+Never print the configuration or token while inspecting the environment.
+
+If the variable is absent or a required field is missing, use details already supplied
+by the human and ask only for what the current task still needs. `dns_log_suffix` is
+needed for DNS tasks, not ordinary HTTP operations. Report invalid JSON as a configuration
+error before calling the API. Example values are placeholders; do not guess a deployment's
+address, panel prefix, or DNS suffix. Username/password login remains available when the
+human supplies credentials instead of a token; see [admin-api.md](admin-api.md).
+
 ## End-to-end workflow: add script -> add route -> read latest logs
 
 ```mermaid
 flowchart LR
-  login["POST /user/login\n(get cookie / token)"] --> upload["POST /file/upload\n(upload .hjs script)"]
+  auth["Load configuration\n(use supplied token or log in)"] --> upload["POST /file/upload\n(upload .hjs script)"]
   upload --> route["POST /http_route\n(handler points to script)"]
   route --> logs["GET /http_log?page=1\n(newest request first)"]
 ```
 
-1. **Log in**: `POST <prefix>/api/user/login` to obtain the `authorization` cookie / token.
+1. **Authenticate**: load the configuration above and send the supplied token. If using
+   username/password instead, `POST <prefix>/api/user/login` returns an `authorization` cookie.
 2. **Upload a script**: `POST <prefix>/api/file/upload` (multipart; `path` = storage path
-   such as `hooks/collect.hjs`, `file` = script content).
+   such as `hooks/collect.hjs`, `file` = script content). Create any parent directory
+   first with `POST <prefix>/api/file/mkdir`.
 3. **Create a route**: `POST <prefix>/api/http_route` with `handler_kind=SCRIPT` and
-   `handler` set to the uploaded path. Creating a route compiles it immediately; an
-   invalid handler path fails the request.
+   `handler` set to the uploaded path. Route changes take effect immediately; script
+   source is loaded when the route handles a request.
 4. **Read latest logs**: `GET <prefix>/api/http_log?page=1&page_size=20`; logs are ordered
    newest-first.
 
 ## Key things to remember
 
+- **Use unguessable HTTP receiver paths.** Generate a fresh random `pattern` for each
+  new HTTP receiving route, e.g. `/5cb4842a7587` (example only). Never use `/` or predictable
+  paths such as `/collect`. Use the generated path in callback URLs as well.
 - **Serving a static file? Use a `STATIC` handler, not a `SCRIPT`.** If you only need to
   return a stored file as-is (HTML page, JS payload, image, etc.), point a `STATIC` handler
   at that file — don't write a `SCRIPT` that just calls `response.sendFile`. Reach for
   `SCRIPT` only when the response must be built dynamically.
-- **Always ask the human for the base path first.** The full base path is
-  `<host>:<port><admin_prefix>/api` (e.g. `https://example.com:8000/super_admin/api`).
-  Both the host/port and `admin_prefix` are deployment-specific, secret-ish, and **not
-  guessable** — they differ for every instance and the examples in this skill use
-  placeholder values. Before making any API call, proactively ask the human for the
-  instance's host/port, `admin_prefix`, and credentials. Do not assume `/super_admin/`
-  or any value taken from an example.
-- **API base path** is `<admin_prefix>/api` (e.g. `/super_admin/api`), not `/api`. The
-  `admin_prefix` is set in the platform config and must not be `/`.
-- **Auth**: login returns the token via `Set-Cookie: authorization=<jwt>` (the token is in
-  the cookie, not the response body). Subsequent requests send that cookie, or set header
-  `Authorization: <jwt>` (an optional `Bearer ` prefix is accepted).
+- **Auth**: the Authorization header takes precedence over the `authorization` cookie;
+  an optional `Bearer ` prefix is accepted. Dedicated tokens inherit their owner's
+  permissions except that they cannot create/delete users, change passwords, or issue
+  new tokens; those operations require a password-login session. They default to no expiry
+  and stop working when expired, revoked, or their owner is deleted. Tokens can also be
+  restricted to a single client IP;
+  requests from other IPs fail authentication. Login returns its JWT in `Set-Cookie`,
+  not the response body.
 - **Response envelope**: every endpoint returns HTTP 200 with body
   `{ "code": number, "msg": string|null, "payload": any }`. Success is `code == 200` —
   always check `code`, not the HTTP status.

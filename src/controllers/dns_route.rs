@@ -5,7 +5,7 @@ use chrono::Utc;
 use diesel_async::AsyncPgConnection;
 use serde::Deserialize;
 
-use crate::controllers::user::LoggedUser;
+use crate::controllers::auth::AuthenticatedUser;
 use crate::db::dns_route::{
     helper::{
         create_dns_route as db_create_dns_route, delete_dns_route as db_delete_dns_route,
@@ -16,11 +16,7 @@ use crate::db::dns_route::{
 };
 use crate::dispatcher::{self, DnsDispatcher, ScriptCache, ScriptHttpClient};
 use crate::storage::Storage;
-use crate::{
-    Context,
-    controllers::AppError,
-    utils::{jwt::Claims, response::Response},
-};
+use crate::{Context, controllers::AppError, utils::response::Response};
 
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateDnsRouteRequest {
@@ -125,7 +121,7 @@ pub fn install_dns_dispatcher(holder: &Arc<RwLock<DnsDispatcher>>, new: DnsDispa
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<DnsRoute>)))]
 pub async fn create_dns_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<CreateDnsRouteRequest>,
 ) -> Result<Response<DnsRoute>, AppError> {
     let new_route = NewDnsRoute {
@@ -164,7 +160,7 @@ pub async fn create_dns_route(
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_dns_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<DeleteDnsRouteRequest>,
 ) -> Result<Response<bool>, AppError> {
     let _update_guard = ctx.dns_route_update_lock.lock().await;
@@ -195,7 +191,7 @@ pub async fn delete_dns_route(
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<DnsRoute>>)))]
 pub async fn get_dns_routes(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
 ) -> Result<Response<Vec<DnsRoute>>, AppError> {
     let mut conn = ctx.db_conn().await?;
     let routes = get_all_dns_routes(&mut conn).await?;
@@ -207,7 +203,7 @@ pub async fn get_dns_routes(
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<DnsRoute>)))]
 pub async fn update_dns_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<UpdateDnsRouteRequest>,
 ) -> Result<Response<DnsRoute>, AppError> {
     let updated_route = NewDnsRoute {

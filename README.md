@@ -289,7 +289,23 @@ export default { status: upstream.statusCode, data };
 - `script-engine.md`：脚本引擎 API（`request` / `response` / `storage` / `cache` / `http` 与工具函数）与示例。
 - `admin-api.md`：后台 API（鉴权 / 文件 / 路由 / 日志）与 curl 端到端示例。
 
-使用方式：让 AI 助手读取 `skills/xss-receiver/SKILL.md` 即可。由于 Base path（host、`admin_prefix`）因部署而异，技能要求 AI 在调用 API 前主动向人类索取。
+在面板的"认证管理"中切换到"Token 管理", 为 AI 签发独立 token. 默认永久有效,
+也可以指定到期时间, 或限制为仅允许某个客户端 IP 调用. IP 限制支持单个 IPv4/IPv6 地址,
+留空表示不限制. 原文只在签发成功时显示一次. 普通用户管理自己的 token,
+管理员可以查看和撤销所有用户的 token. token 沿用所属账户的业务权限,
+但不能新增/删除用户, 修改密码或签发新 token; 这些操作必须通过账号密码登录后进行.
+token 撤销或所属账户被删除后失效, 服务重启, JWT 密钥变化和修改密码不会使其失效.
+
+让 AI 助手读取 `skills/xss-receiver/SKILL.md`, 并通过环境变量提供配置:
+
+```bash
+export XSS_RECEIVER_CONFIG='{"server_base":"https://example.com:8000","admin_prefix":"/super_admin/","token":"xrt_...","dns_log_suffix":"dns.example.com"}'
+```
+
+`server_base` 包含协议, 主机和可选端口; `admin_prefix` 是以 `/` 开头的面板路径,
+不包含 `/api` 或页面 hash, 且不能为 `/`. API 地址由两者拼接后追加 `/api` 得到.
+`dns_log_suffix` 用于构造 DNS Log 域名. skill 优先读取环境变量, 配置完整时直接使用 token,
+仅在缺少当前任务所需信息时询问. 也支持手动提供配置及使用账号密码登录.
 
 ## 本地开发
 

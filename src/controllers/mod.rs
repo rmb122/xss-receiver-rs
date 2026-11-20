@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use axum::{Router, extract::FromRef, http::StatusCode, response::IntoResponse};
+use axum::{Router, http::StatusCode, response::IntoResponse};
 use diesel_async::{AsyncPgConnection, pooled_connection::bb8};
 
 use jsonwebtoken::Algorithm;
@@ -20,6 +20,7 @@ use crate::{
     utils::{ip2region::Locator, jwt::JwtManager, random::get_random_bytes, response::Response},
 };
 
+mod auth;
 mod dns_log;
 mod dns_route;
 mod file;
@@ -29,6 +30,7 @@ mod http_route;
 mod index;
 mod log_query;
 mod system_log;
+mod token;
 mod user;
 
 #[derive(Clone)]
@@ -134,12 +136,6 @@ impl Context {
     }
 }
 
-impl FromRef<Context> for Arc<JwtManager> {
-    fn from_ref(context: &Context) -> Arc<JwtManager> {
-        context.jwt_manager.clone()
-    }
-}
-
 const OPEN_API_URL: &str = "/api-docs/openapi.json";
 
 pub fn get_app_router(context: Context) -> Router<()> {
@@ -149,6 +145,12 @@ pub fn get_app_router(context: Context) -> Router<()> {
         .routes(routes!(user::get_users))
         .routes(routes!(user::delete_user))
         .routes(routes!(user::update_user));
+
+    let token_router = OpenApiRouter::new().routes(routes!(
+        token::create_token,
+        token::get_tokens,
+        token::delete_token
+    ));
 
     let http_route_router = OpenApiRouter::new()
         .routes(routes!(http_route::create_http_route))
@@ -186,6 +188,7 @@ pub fn get_app_router(context: Context) -> Router<()> {
 
     let (mut admin_api_router, mut openapi) = OpenApiRouter::new()
         .nest("/user", user_router)
+        .nest("/token", token_router)
         .nest("/http_route", http_route_router)
         .nest("/http_log", http_log_router)
         .nest("/dns_route", dns_route_router)
@@ -265,8 +268,12 @@ mod route_update_tests {
     use futures::future::join_all;
     use serde_json::{Value, json};
 
-    use super::{Context, dns_route, http_route, user::LoggedUser};
-    use crate::{db, utils::jwt::Claims};
+    use super::{
+        Context,
+        auth::{AuthenticatedUser, LoggedUser},
+        dns_route, http_route,
+    };
+    use crate::db;
 
     #[derive(Clone, Copy, Debug)]
     enum Protocol {
@@ -285,10 +292,13 @@ mod route_update_tests {
                 serde_json::to_value(
                     $handler(
                         State(ctx.clone()),
-                        Claims(LoggedUser {
-                            id: 1,
-                            username: "route-test".into(),
-                        }),
+                        AuthenticatedUser {
+                            user: LoggedUser {
+                                id: 1,
+                                username: "route-test".into(),
+                            },
+                            is_api_token: false,
+                        },
                         Json(serde_json::from_value(body)?),
                     )
                     .await

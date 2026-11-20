@@ -8,6 +8,8 @@ import DnsRouteView from '@/views/DnsRouteView.vue'
 import FileView from '@/views/FileView.vue'
 import SystemLogView from '@/views/SystemLogView.vue'
 import UserView from '@/views/UserView.vue'
+import AuthView from '@/views/AuthView.vue'
+import TokenView from '@/views/TokenView.vue'
 
 const router = createRouter({
   history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -49,9 +51,13 @@ const router = createRouter({
       meta: { requiresAdmin: true },
     },
     {
-      path: '/users',
-      name: 'users',
-      component: UserView,
+      path: '/auth',
+      component: AuthView,
+      children: [
+        { path: '', redirect: '/auth/users' },
+        { path: 'users', name: 'users', component: UserView },
+        { path: 'tokens', name: 'tokens', component: TokenView },
+      ],
     },
   ],
 })

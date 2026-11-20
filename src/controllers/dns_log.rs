@@ -1,13 +1,13 @@
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
+use crate::controllers::auth::AuthenticatedUser;
 use crate::controllers::log_query::LogQuery;
-use crate::controllers::user::LoggedUser;
 use crate::{
     Context,
     controllers::AppError,
     db::dns_log::{helper::get_dns_logs_paginated, model::DnsLog},
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
@@ -22,7 +22,7 @@ pub struct PaginatedDnsLogResponse {
 #[utoipa::path(get, path = "/", params(LogQuery), responses((status = OK, body = Response<PaginatedDnsLogResponse>)))]
 pub async fn get_dns_logs(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Query(request): Query<LogQuery>,
 ) -> Result<Response<PaginatedDnsLogResponse>, AppError> {
     let filter = request.filter()?;

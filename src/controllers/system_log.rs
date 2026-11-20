@@ -1,12 +1,12 @@
 use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
-use crate::controllers::user::{LoggedUser, check_admin};
+use crate::controllers::{auth::AuthenticatedUser, user::check_admin};
 use crate::{
     Context,
     controllers::AppError,
     db::system_log::{helper::get_system_logs_paginated, model::SystemLog},
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
 
 // 分页响应
@@ -39,7 +39,7 @@ fn default_page_size() -> i64 {
 #[utoipa::path(get, path = "/", params(PaginatedRequest), responses((status = OK, body = Response<PaginatedSystemLogResponse>)))]
 pub async fn get_system_logs(
     State(ctx): State<Context>,
-    Claims(user): Claims<LoggedUser>,
+    AuthenticatedUser { user, .. }: AuthenticatedUser,
     Query(request): Query<PaginatedRequest>,
 ) -> Result<Response<PaginatedSystemLogResponse>, AppError> {
     check_admin(&user)?;

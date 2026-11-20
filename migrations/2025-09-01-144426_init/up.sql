@@ -7,6 +7,17 @@ CREATE TABLE users (
 	CONSTRAINT users_unique UNIQUE (username)
 );
 
+CREATE TABLE api_tokens (
+	id serial4 PRIMARY KEY,
+	user_id int4 NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name varchar NOT NULL,
+	token_hash varchar(64) NOT NULL UNIQUE,
+	create_time timestamptz DEFAULT now() NOT NULL,
+	expires_at timestamptz,
+	allowed_ip varchar(45)
+);
+CREATE INDEX api_tokens_user_id_idx ON api_tokens (user_id);
+
 CREATE TABLE http_log (
 	id serial4 NOT NULL,
 	client_ip varchar(45) NOT NULL,

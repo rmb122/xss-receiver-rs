@@ -16,7 +16,7 @@
         prepend-icon="mdi-text-box-outline"
         >系统日志</v-btn
       >
-      <v-btn to="/users" variant="text" prepend-icon="mdi-account-group">用户管理</v-btn>
+      <v-btn to="/auth" variant="text" prepend-icon="mdi-shield-account-outline">认证管理</v-btn>
     </template>
   </v-app-bar>
 </template>

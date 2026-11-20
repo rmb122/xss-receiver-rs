@@ -5,7 +5,7 @@ use chrono::Utc;
 use diesel_async::AsyncPgConnection;
 use serde::Deserialize;
 
-use crate::controllers::user::LoggedUser;
+use crate::controllers::auth::AuthenticatedUser;
 use crate::db::http_route::helper::{find_http_route_by_id, get_all_http_routes_except};
 use crate::db::http_route::model::PatternKind;
 use crate::dispatcher::{
@@ -22,7 +22,7 @@ use crate::{
         },
         model::{HandlerKind, HttpRoute, NewHttpRoute},
     },
-    utils::{jwt::Claims, response::Response},
+    utils::response::Response,
 };
 
 // 创建路由请求
@@ -137,7 +137,7 @@ pub fn install_http_dispatcher(holder: &Arc<RwLock<HttpDispatcher>>, new: HttpDi
 #[utoipa::path(post, path = "/", responses((status = OK, body = Response<HttpRoute>)))]
 pub async fn create_http_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<CreateHttpRouteRequest>,
 ) -> Result<Response<HttpRoute>, AppError> {
     let new_http_route = NewHttpRoute {
@@ -180,7 +180,7 @@ pub async fn create_http_route(
 #[utoipa::path(delete, path = "/", responses((status = OK, body = Response<bool>)))]
 pub async fn delete_http_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<DeleteHttpRouteRequest>,
 ) -> Result<Response<bool>, AppError> {
     let _update_guard = ctx.http_route_update_lock.lock().await;
@@ -215,7 +215,7 @@ pub async fn delete_http_route(
 #[utoipa::path(get, path = "/", responses((status = OK, body = Response<Vec<HttpRoute>>)))]
 pub async fn get_http_routes(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
 ) -> Result<Response<Vec<HttpRoute>>, AppError> {
     let mut conn = ctx.db_conn().await?;
     let http_routes = get_all_http_routes(&mut conn).await?;
@@ -227,7 +227,7 @@ pub async fn get_http_routes(
 #[utoipa::path(patch, path = "/", responses((status = OK, body = Response<HttpRoute>)))]
 pub async fn update_http_route(
     State(ctx): State<Context>,
-    Claims(_user): Claims<LoggedUser>,
+    _user: AuthenticatedUser,
     Json(request): Json<UpdateHttpRouteRequest>,
 ) -> Result<Response<HttpRoute>, AppError> {
     let updated_http_route = NewHttpRoute {

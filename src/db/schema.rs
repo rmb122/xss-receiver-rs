@@ -1,6 +1,20 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    api_tokens (id) {
+        id -> Int4,
+        user_id -> Int4,
+        name -> Varchar,
+        #[max_length = 64]
+        token_hash -> Varchar,
+        create_time -> Timestamptz,
+        expires_at -> Nullable<Timestamptz>,
+        #[max_length = 45]
+        allowed_ip -> Nullable<Varchar>,
+    }
+}
+
+diesel::table! {
     dns_log (id) {
         id -> Int4,
         #[max_length = 45]
@@ -95,6 +109,8 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(api_tokens -> users (user_id));
+
 diesel::allow_tables_to_appear_in_same_query!(
-    dns_log, dns_route, http_log, http_route, system_log, users,
+    api_tokens, dns_log, dns_route, http_log, http_route, system_log, users,
 );
