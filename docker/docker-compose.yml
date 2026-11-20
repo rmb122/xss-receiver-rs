@@ -21,7 +21,7 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - 8000:8000
-      # - "x.x.x.x:53/udp"
+      # - "x.x.x.x:53:53/udp"
     volumes:
       - ./config.toml:/app/config.toml:ro
       - ./app_data:/app/storage
