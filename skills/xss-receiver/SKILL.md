@@ -110,6 +110,11 @@ flowchart LR
    source is loaded when the route handles a request.
 4. **Read latest logs**: `GET <prefix>/api/http_log?page=1&page_size=20`; logs are ordered
    newest-first.
+5. **Clean up temporary resources**: track the HTTP/DNS route IDs and file paths created
+   for the task. Once the task is finished and no more callbacks are needed, delete those
+   routes first, then their files if no longer used elsewhere, using the deletion endpoints
+   in [admin-api.md](admin-api.md). Keep resources needed for long-running tasks or explicitly
+   requested for continued use.
 
 ## Key things to remember
 
